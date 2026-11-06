@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-⚡ Apex Auto-Clicker & Macro Studio Ultra Pro (v9.5 Complete Edition)
+⚡ Apex Auto-Clicker & Macro Studio (v1.1)
 The definitive high-performance, pixel-accurate desktop automation suite.
 
 Complete Feature & Settings Verification:
@@ -44,6 +44,8 @@ import random
 import threading
 import urllib.request
 from datetime import datetime
+
+from apex.version import MACRO_SCHEMA_VERSION, PRODUCT_VERSION
 
 # Windows Native APIs & High-DPI Scaling Configuration
 IS_WINDOWS = sys.platform.startswith("win")
@@ -1363,7 +1365,7 @@ class ApexAutoClickerApp(tk.Tk):
     """
     def __init__(self):
         super().__init__()
-        self.title("⚡ Apex Auto-Clicker")
+        self.title(f"⚡ Apex Auto-Clicker v{PRODUCT_VERSION}")
         self.geometry("480x620")
         self.minsize(460, 580)
         self.resizable(True, True)
@@ -2199,7 +2201,7 @@ class AACLDiagnosticsDialog(tk.Toplevel):
         head = tk.Frame(self, bg=THEME["bg_root"], padx=16, pady=10)
         head.pack(fill="x")
         tk.Label(head, text="🛡️ Apex Application Compatibility Layer (AACL)", fg=THEME["text_primary"], bg=THEME["bg_root"], font=THEME["font_title"]).pack(anchor="w")
-        tk.Label(head, text="Modular v11.0 Runtime • Vertex/Vector Coordinate Space & Adapter Diagnostics", fg=THEME["text_secondary"], bg=THEME["bg_root"], font=THEME["font_main"]).pack(anchor="w")
+        tk.Label(head, text=f"Apex v{PRODUCT_VERSION} • Macro schema {MACRO_SCHEMA_VERSION} • Vertex/Vector Coordinate Space & Adapter Diagnostics", fg=THEME["text_secondary"], bg=THEME["bg_root"], font=THEME["font_main"]).pack(anchor="w")
 
         c1 = StyledCard(self, title="1. Recognized Application Identity & Geometry")
         c1.pack(fill="x", padx=16, pady=4)
@@ -5199,7 +5201,7 @@ if __name__ == "__main__":
         vec = Vector2D.between(v0, v1)
         prof = CapabilityRegistry.inspect(self.recorded_target_hwnd, self.recorded_target_title, "", (w, h))
         entry = {
-            "schema_version": "11.0",
+            "schema_version": MACRO_SCHEMA_VERSION,
             "time": t_rounded,
             "timestamp": t_rounded,
             "type": action_type,
@@ -5580,7 +5582,7 @@ if __name__ == "__main__":
         p = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON Macro", "*.json")])
         if p:
             with open(p, "w", encoding="utf-8") as f:
-                json.dump({"version": "10.5", "origin_pos": self.recorded_origin_pos, "target_app": self.recorded_target_title, "actions": self.actions}, f, indent=2)
+                json.dump({"version": MACRO_SCHEMA_VERSION, "origin_pos": self.recorded_origin_pos, "target_app": self.recorded_target_title, "actions": self.actions}, f, indent=2)
             messagebox.showinfo("Saved", "Macro saved successfully!")
 
     def load_macro_file(self):
@@ -5624,7 +5626,7 @@ if __name__ == "__main__":
 def main():
     if MISSING_DEPS:
         print("="*60)
-        print("⚡ APEX AUTO-CLICKER (v9.5)")
+        print(f"⚡ APEX AUTO-CLICKER (v{PRODUCT_VERSION})")
         print("="*60)
         print(f"Missing required library: {', '.join(MISSING_DEPS)}")
         print("\nPlease install the required libraries using:")
