@@ -9,8 +9,8 @@ import shutil
 import subprocess
 import sys
 import tarfile
-from pathlib import Path
 from collections.abc import Sequence
+from pathlib import Path
 
 from apex.version import (
     EXECUTABLE_BASENAME,
