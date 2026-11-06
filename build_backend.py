@@ -74,7 +74,10 @@ def build_application(platform_name: str, clean: bool = False) -> Path:
             "--hidden-import", "pynput.mouse._win32",
         ])
     elif sys.platform.startswith("linux"):
-        command.extend(["--hidden-import", "pynput.keyboard._xorg"])
+        command.extend([
+            "--hidden-import", "pynput.keyboard._xorg",
+            "--hidden-import", "pynput.mouse._xorg",
+        ])
     if clean:
         command.append("--clean")
     command.append(str(ROOT / "apex_autoclicker.py"))

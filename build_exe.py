@@ -3,5 +3,10 @@
 from build import main
 
 
+def build_executable() -> int:
+    """Retain the original callable while delegating to the general build."""
+    return main(["--target", "all"])
+
+
 if __name__ == "__main__":
     raise SystemExit(main())

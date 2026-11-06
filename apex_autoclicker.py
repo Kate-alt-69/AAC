@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Stable application launcher; the implementation lives in apex.ui."""
+"""Stable launcher and compatibility exports for the Apex desktop application."""
+from apex.ui.studio_app import *  # noqa: F401,F403
 from apex.ui.studio_app import main
 
 
