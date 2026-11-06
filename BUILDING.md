@@ -104,3 +104,26 @@ compatibility concern and are not inferred from a successful package build.
   the terminal.
 - MSI or setup EXE missing after compilation: the backend treats this as a
   failed build rather than reporting success.
+
+
+## Automated checks and repository security
+
+The repository workflows live under `.github/workflows/`:
+
+- `quality.yml` compiles the maintained Python package/entry points, runs the
+  unit tests and Ruff checks on Windows and Linux, and builds the Windows
+  application plus both installer formats.
+- `codeql.yml` runs CodeQL security analysis for Python on pull requests,
+  pushes to `master`, and a weekly schedule.
+- `dependency-review.yml` checks dependency changes in pull requests.
+- `.github/dependabot.yml` schedules weekly updates for pip requirements and
+  GitHub Actions dependencies.
+
+These workflows provide CI quality checks and CodeQL code scanning. They do
+not enable repository-level Dependabot alerting, secret-scanning alerts, or
+push protection; review those controls under the repository's **Settings →
+Security and quality → Advanced Security** page.
+
+GitHub Code Quality is a separate paid product, not the same thing as a
+repository-defined CI workflow. Its current availability and billing are
+described in GitHub's [Code Quality documentation](https://docs.github.com/en/code-security/how-tos/maintain-quality-code/enable-code-quality).

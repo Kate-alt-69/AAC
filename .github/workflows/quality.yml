@@ -1,0 +1,113 @@
+name: Apex Quality Checks
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.11", "3.13"]
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install quality tooling
+        run: python -m pip install --disable-pip-version-check ruff
+
+      - name: Compile all maintained Python entry points and package modules
+        run: >-
+          python -m compileall -q
+          apex
+          build.py
+          build_backend.py
+          build_exe.py
+          apex_autoclicker.py
+          apex_autoclicker_fixed.py
+
+      - name: Lint release and build code
+        run: >-
+          ruff check
+          build.py
+          build_backend.py
+          build_exe.py
+          apex/version.py
+          apex/tests/test_release_build.py
+
+      - name: Run unit tests
+        run: python -m unittest discover -s apex/tests -v
+
+      - name: Validate WiX installer XML
+        run: python -c "import xml.etree.ElementTree as ET; ET.parse('installer/windows/Product.wxs')"
+
+      - name: Validate Linux build script syntax
+        if: runner.os == 'Linux'
+        run: bash -n scripts/build_linux.sh
+
+      - name: Validate build command help
+        run: |
+          python build.py --help
+          python build_backend.py --help
+
+  windows-installers:
+    name: Build Windows EXE and MSI installers
+    runs-on: windows-latest
+    needs: verify
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install application dependencies
+        run: |
+          python -m pip install --disable-pip-version-check --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Install Inno Setup 6
+        shell: powershell
+        run: choco install innosetup --yes --no-progress
+
+      - name: Install WiX Toolset CLI
+        shell: powershell
+        run: |
+          dotnet tool install --global wix
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          wix --version
+
+      - name: Build application and both installers
+        run: python build.py --target all --installer-format all --skip-tests
+
+      - name: Upload Windows release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: apex-v1.0.0-windows-x64
+          if-no-files-found: error
+          path: |
+            dist/windows/app/apex-autoclicker.exe
+            dist/installers/*.exe
+            dist/installers/*.msi

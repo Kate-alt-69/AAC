@@ -95,6 +95,26 @@ macOS packaging is not included in this release's build scripts.
 - `scripts/` — native build entry points.
 - `installer/windows/` — Inno Setup and WiX installer definitions.
 
+## Quality and security
+
+GitHub Actions validates the Python package and release tooling on Windows and
+Linux. The workflows also run CodeQL analysis for Python and review dependency
+changes in pull requests.
+
+Dependabot checks the Python requirements and GitHub Actions workflow
+dependencies weekly. GitGuardian currently scans pull requests for leaked
+secrets. See [SECURITY.md](SECURITY.md) for private vulnerability-reporting
+instructions.
+
+For repository-level protection, the owner should also review **Settings →
+Security and quality → Advanced Security** and enable the available
+Dependabot alerts, Dependabot security updates, secret scanning, and push
+protection features.
+
+GitHub Code Quality is a separate paid product; it is not the same as the
+automated CI checks in this repository. See [BUILDING.md](BUILDING.md) for the
+current workflow and billing distinction.
+
 ## Release notes
 
 The `v1.0.0` tag identifies the first distributable release. The application

@@ -36,6 +36,17 @@ class TestReleaseBuildMetadata(unittest.TestCase):
             root / "dist/linux/app/apex-autoclicker",
         )
 
+    def test_installer_definitions_use_the_requested_install_layout(self):
+        root = Path(__file__).resolve().parents[2]
+        inno_script = (root / "installer" / "windows" / "ApexAutoClicker.iss").read_text(encoding="utf-8")
+        wix_script = (root / "installer" / "windows" / "Product.wxs").read_text(encoding="utf-8")
+
+        self.assertIn(r"DefaultDirName={autopf}\kastrick's_software\aac", inno_script)
+        self.assertIn(r"OutputDir=..\..\dist\installers", inno_script)
+        self.assertIn('Name="kastrick\'s_software"', wix_script)
+        self.assertIn('Name="aac"', wix_script)
+        self.assertIn('Version="$(var.ProductVersion).0"', wix_script)
+
     def test_platform_build_script_selection(self):
         root = Path("/repo")
         expected_windows = (
