@@ -47,7 +47,7 @@ Install the external installer tools separately. Inno Setup is available from
 https://jrsoftware.org/isinfo.php. WiX can be installed through the .NET SDK:
 
 ```powershell
-dotnet tool install --global wix
+dotnet tool install --global wix --version 6.0.2
 ```
 
 Close and reopen the terminal after installing a global .NET tool so its tool
@@ -127,3 +127,15 @@ Security and quality → Advanced Security** page.
 GitHub Code Quality is a separate paid product, not the same thing as a
 repository-defined CI workflow. Its current availability and billing are
 described in GitHub's [Code Quality documentation](https://docs.github.com/en/code-security/how-tos/maintain-quality-code/enable-code-quality).
+
+
+### WiX Toolset licensing note
+
+The MSI build is pinned to WiX Toolset **6.0.2** rather than installing the
+latest major release automatically. WiX v6 introduced the Open Source
+Maintenance Fee (OSMF); the published terms require sponsorship for
+revenue-generating users above the stated annual-revenue threshold. WiX v7
+adds an explicit EULA-acceptance gate, so CI must not silently accept it.
+Review the current [WiX OSMF terms](https://docs.firegiant.com/wix/osmf/) before
+using WiX to build or distribute revenue-generating products. To use WiX v7,
+review and accept its EULA explicitly under the applicable terms first.
