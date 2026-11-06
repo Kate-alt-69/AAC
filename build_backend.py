@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tarfile
 from pathlib import Path
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 from apex.version import (
     EXECUTABLE_BASENAME,
@@ -90,7 +90,7 @@ def build_application(platform_name: str, clean: bool = False) -> Path:
     return executable
 
 
-def find_inno_compiler() -> Optional[str]:
+def find_inno_compiler() -> str | None:
     candidate = shutil.which("ISCC.exe") or shutil.which("ISCC")
     if candidate:
         return candidate
@@ -103,7 +103,7 @@ def find_inno_compiler() -> Optional[str]:
     return None
 
 
-def find_wix_cli() -> Optional[str]:
+def find_wix_cli() -> str | None:
     return shutil.which("wix.exe") or shutil.which("wix")
 
 
@@ -170,7 +170,7 @@ def build_linux_archive(executable: Path) -> Path:
     return archive
 
 
-def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Apex shared platform build backend.")
     parser.add_argument("--platform", choices=("windows", "linux"), required=True)
     parser.add_argument("--target", choices=("app", "installers", "all"), default="all")
@@ -179,7 +179,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         executable = build_application(args.platform, clean=args.clean)

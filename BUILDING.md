@@ -115,7 +115,7 @@ The repository workflows live under `.github/workflows/`:
   application plus both installer formats.
 - `codeql.yml` runs CodeQL security analysis for Python on pull requests,
   pushes to `master`, and a weekly schedule.
-- `dependency-review.yml` checks dependency changes in pull requests.
+- `dependency-review.yml` checks dependency manifest changes in pull requests. It requires GitHub's Dependency Graph to be enabled under repository Settings → Security and quality → Advanced Security.
 - `.github/dependabot.yml` schedules weekly updates for pip requirements and
   GitHub Actions dependencies.
 

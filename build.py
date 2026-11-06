@@ -12,7 +12,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional, Sequence
+from collections.abc import Sequence
 
 ROOT = Path(__file__).resolve().parent
 
@@ -82,7 +82,7 @@ def run_tests() -> None:
     subprocess.run(command, cwd=ROOT, check=True)
 
 
-def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build Apex Auto-Clicker and its platform installers.")
     parser.add_argument("--target", choices=("app", "installers", "all"), default="all",
                         help="Build only the app, installers (including the app), or everything (default: all).")
@@ -93,7 +93,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         if not args.skip_tests:

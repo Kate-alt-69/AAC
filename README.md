@@ -99,7 +99,7 @@ macOS packaging is not included in this release's build scripts.
 
 GitHub Actions validates the Python package and release tooling on Windows and
 Linux. The workflows also run CodeQL analysis for Python and review dependency
-changes in pull requests.
+changes in pull requests when dependency manifests are modified; Dependency Graph must be enabled in repository security settings.
 
 Dependabot checks the Python requirements and GitHub Actions workflow
 dependencies weekly. GitGuardian currently scans pull requests for leaked
