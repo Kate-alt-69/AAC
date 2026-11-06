@@ -54,10 +54,19 @@ Close and reopen the terminal after installing a global .NET tool so its tool
 path is refreshed. The build reports a clear missing-tool error and does not
 claim that an installer was produced when its compiler is unavailable.
 
+Before distributing installers commercially, review the current terms of both
+build tools: Inno Setup asks commercial users to purchase a commercial license,
+and WiX v6 documents an Open Source Maintenance Fee for revenue-generating use.
+These are build-time tools and are not bundled into the Apex installer. Check the
+current vendor terms for your exact use case:
+
+- https://jrsoftware.org/ishelp/topic_whatisinnosetup.htm
+- https://docs.firegiant.com/wix/whatsnew/releasenotes/
+
 Default installation directory for both Windows installer formats:
 
 ```text
-{ProgramFiles}\\kastrick's_software\\aac\\apex-autoclicker.exe
+{ProgramFiles}\kastrick's_software\aac\apex-autoclicker.exe
 ```
 
 This is a per-machine installation and requires elevation. User-created macro

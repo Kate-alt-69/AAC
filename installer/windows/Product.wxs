@@ -2,7 +2,7 @@
   <Package
     Name="Apex Auto-Clicker"
     Manufacturer="Kastrick"
-    Version="$(var.ReleaseVersion)"
+    Version="$(var.ProductVersion).0"
     UpgradeCode="D17F5A3C-6B4E-4A73-9D51-8DA49F6A5011"
     Scope="perMachine"
     InstallerVersion="500"
@@ -41,7 +41,7 @@
           <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
           <RegistryValue
             Root="HKLM"
-            Key="Software\\Kastrick\\ApexAutoClicker"
+            Key="Software\Kastrick\ApexAutoClicker"
             Name="Installed"
             Type="integer"
             Value="1"
