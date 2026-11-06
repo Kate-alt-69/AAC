@@ -47,6 +47,8 @@ class TestReleaseBuildMetadata(unittest.TestCase):
         self.assertIn('Name="kastrick\'s_software"', wix_script)
         self.assertIn('Name="aac"', wix_script)
         self.assertIn('Version="$(var.ProductVersion).0"', wix_script)
+        self.assertIn("ArchitecturesAllowed=x64compatible", inno_script)
+        self.assertIn("ArchitecturesInstallIn64BitMode=x64compatible", inno_script)
 
     def test_platform_build_script_selection(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
