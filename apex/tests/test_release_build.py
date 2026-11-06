@@ -1,4 +1,5 @@
 import shutil
+import tempfile
 import unittest
 from pathlib import Path, PureWindowsPath
 
@@ -48,20 +49,27 @@ class TestReleaseBuildMetadata(unittest.TestCase):
         self.assertIn('Version="$(var.ProductVersion).0"', wix_script)
 
     def test_platform_build_script_selection(self):
-        root = Path("/repo")
-        expected_windows = (
-            "build_windows.ps1"
-            if (shutil.which("pwsh") or shutil.which("powershell"))
-            else "build_windows.bat"
-        )
-        self.assertEqual(
-            build.get_platform_script("win32", root),
-            root / "scripts" / expected_windows,
-        )
-        self.assertEqual(
-            build.get_platform_script("linux", root),
-            root / "scripts/build_linux.sh",
-        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            (scripts / "build_windows.ps1").touch()
+            (scripts / "build_windows.bat").touch()
+            (scripts / "build_linux.sh").touch()
+
+            expected_windows = (
+                "build_windows.ps1"
+                if (shutil.which("pwsh") or shutil.which("powershell"))
+                else "build_windows.bat"
+            )
+            self.assertEqual(
+                build.get_platform_script("win32", root),
+                root / "scripts" / expected_windows,
+            )
+            self.assertEqual(
+                build.get_platform_script("linux", root),
+                root / "scripts/build_linux.sh",
+            )
 
 
 if __name__ == "__main__":
