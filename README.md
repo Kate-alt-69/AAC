@@ -89,7 +89,7 @@ macOS packaging is not included in this release's build scripts.
 - `apex/recording/` — recording and gesture modules.
 - `apex/runtime/` — cursor and runtime feedback modules.
 - `apex/adapters/` — Windows, Linux, browser and custom-application adapters.
-- `apex/ui/studio_app.py` — canonical desktop UI implementation.
+- `apex/ui/studio_app.py` — canonical desktop UI implementation. The two root-level legacy entry-point files are kept byte-identical for compatibility; a unit test enforces parity.
 - `build.py` — cross-platform build orchestrator.
 - `build_backend.py` — shared PyInstaller and installer build implementation.
 - `scripts/` — native build entry points.

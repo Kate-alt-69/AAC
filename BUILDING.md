@@ -139,3 +139,43 @@ adds an explicit EULA-acceptance gate, so CI must not silently accept it.
 Review the current [WiX OSMF terms](https://docs.firegiant.com/wix/osmf/) before
 using WiX to build or distribute revenue-generating products. To use WiX v7,
 review and accept its EULA explicitly under the applicable terms first.
+
+
+## Target-window input and virtual cursor behavior
+
+Apex locks a Windows target by its top-level HWND plus process/thread identity,
+and stores interactions in the target's client coordinate space. The session
+revalidates that identity before dispatch so a closed/reused HWND cannot silently
+receive later events.
+
+The virtual cursor is **visual feedback only**. It draws a bounded cursor and
+interaction indicators; it does not itself deliver mouse or keyboard input.
+
+The runtime selects an input route for every locked target:
+
+- **Target HWND messages** are queued to the target window or its focused/child
+  control without moving the physical desktop cursor. This is a best-effort
+  route for message-driven Win32 applications. A successful `PostMessageW`
+  call confirms only that Windows queued a message; it does not confirm that
+  the application processed it. Apps using Raw Input, DirectInput, custom
+  render/input loops, or some modern window frameworks may ignore these
+  messages.
+- **Foreground SendInput** is used for game clients, Raw Input-style apps,
+  browsers without a connected browser-protocol adapter, and other
+  foreground-only targets. Apex asks for approval, activates the locked target,
+  and checks the target before each input call. `SendInput` enters the shared
+  desktop input stream, so the real mouse/keyboard are not independently
+  available during those actions. Switching focus stops playback rather than
+  sending input to the newly focused application.
+
+This is a target-window-first design, not arbitrary DLL injection. Apex does not
+inject code into other processes or bypass game anti-cheat systems. True
+background input for an arbitrary custom-rendered application requires that
+application to expose a supported automation interface or an Apex Bridge
+integration.
+
+The Windows CI suite verifies the portable coordinate/routing logic and builds
+the application/installers. The foreground/background behavior still needs
+manual runtime validation on Windows with Notepad, a browser, and the current
+Roblox client; successful packaging is not proof that a particular target
+application accepts a given input route.

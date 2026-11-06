@@ -53,6 +53,10 @@ jobs:
           build_backend.py
           build_exe.py
           apex/version.py
+          apex/core/capability_registry.py
+          apex/core/input_router.py
+          apex/adapters/windows/target_session.py
+          apex/adapters/windows/input_backends.py
           apex/tests/test_release_build.py
 
       - name: Run unit tests
