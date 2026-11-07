@@ -153,20 +153,31 @@ interaction indicators; it does not itself deliver mouse or keyboard input.
 
 The runtime selects an input route for every locked target:
 
-- **Target HWND messages** are queued to the target window or its focused/child
-  control without moving the physical desktop cursor. This is a best-effort
-  route for message-driven Win32 applications. A successful `PostMessageW`
-  call confirms only that Windows queued a message; it does not confirm that
-  the application processed it. Apps using Raw Input, DirectInput, custom
-  render/input loops, or some modern window frameworks may ignore these
-  messages.
-- **Foreground SendInput** is used for game clients, Raw Input-style apps,
-  browsers without a connected browser-protocol adapter, and other
-  foreground-only targets. Apex asks for approval, activates the locked target,
-  and checks the target before each input call. `SendInput` enters the shared
-  desktop input stream, so the real mouse/keyboard are not independently
-  available during those actions. Switching focus stops playback rather than
-  sending input to the newly focused application.
+- **Target HWND messages** are queued to the locked target window or an
+  eligible child control without moving the physical desktop cursor. This is
+  the same target-session backend for every compatible selected application;
+  it is not a Roblox-specific path. Every recipient HWND is checked to ensure
+  it belongs to the captured top-level target.
+- Mouse-down pins that button to the child HWND that received it. Movement and
+  mouse-up remain on that child even when the pointer crosses another child
+  control. Key-down records its focused child HWND, scan code, and extended-key
+  state; key-up returns to that same child. Scroll targets the child under the
+  virtual pointer. Cancellation attempts to release all buttons and keys still
+  owned by the session.
+- This is still a best-effort message-driven Win32 route. A successful
+  `PostMessageW` call confirms only that Windows queued a message; it does not
+  confirm that the application processed it. Apps using Raw Input, DirectInput,
+  custom render/input loops, or some modern window frameworks may ignore these
+  messages. A target HWND being validated does not force its app to accept a
+  synthetic message.
+- **Foreground SendInput** is used for game clients (including Roblox),
+  Raw Input-style apps, browsers without a connected browser-protocol adapter,
+  and other foreground-only targets. This fallback is not window-isolated:
+  Apex asks for approval, activates the locked target, and checks the target
+  before each input call. `SendInput` enters the shared desktop input stream,
+  so the physical mouse/keyboard are not independently available during those
+  actions. Switching focus stops playback rather than sending input to the
+  newly focused application.
 
 This is a target-window-first design, not arbitrary DLL injection. Apex does not
 inject code into other processes or bypass game anti-cheat systems. True
@@ -174,8 +185,13 @@ background input for an arbitrary custom-rendered application requires that
 application to expose a supported automation interface or an Apex Bridge
 integration.
 
-The Windows CI suite verifies the portable coordinate/routing logic and builds
-the application/installers. The foreground/background behavior still needs
-manual runtime validation on Windows with Notepad, a browser, and the current
-Roblox client; successful packaging is not proof that a particular target
-application accepts a given input route.
+The Windows CI suite verifies the routing logic, press ownership, cleanup
+behavior, and builds the application/installers. Its input tests use a fake
+target session; they do not launch Notepad, Firefox, or Roblox. Manual
+interactive validation on Windows is still needed for each application
+profile. In particular, the current Roblox client remains a foreground/shared
+input route: a visual cursor overlay is not a second hardware cursor, and
+ordinary external Win32 messages cannot be assumed to drive Roblox's own input
+pipeline. True background input for a custom-rendered/Raw Input application
+requires an application-supported bridge or a separately designed integration;
+Apex must report that limitation instead of claiming the input is isolated.

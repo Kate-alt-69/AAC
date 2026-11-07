@@ -69,7 +69,7 @@ the Inno Setup installer also offers an optional desktop shortcut.
 Install WiX as a global .NET tool when needed:
 
 ```powershell
-dotnet tool install --global wix
+dotnet tool install --global wix --version 6.0.2
 ```
 
 Install Inno Setup from [jrsoftware.org](https://jrsoftware.org/isinfo.php).
