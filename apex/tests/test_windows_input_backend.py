@@ -132,6 +132,30 @@ class TestWindowMessageInputBackend(unittest.TestCase):
         self.assertFalse(backend.pressed_buttons)
         self.assertFalse(backend.pressed_keys)
 
+    def test_key_up_keeps_recorded_scan_code(self):
+        _session, backend, calls = self.make_backend()
+
+        backend.key_down(0x41, 0x1E)
+        backend.key_up(0x41, 0x30)
+
+        down_scan = (calls[0][3] >> 16) & 0xFF
+        up_scan = (calls[1][3] >> 16) & 0xFF
+        self.assertEqual(down_scan, 0x1E)
+        self.assertEqual(up_scan, 0x1E)
+
+    def test_non_windows_cleanup_clears_virtual_press_ownership(self):
+        _session, backend, _calls = self.make_backend()
+        backend.pressed_buttons.add("left")
+        backend.mouse_capture_targets["left"] = 101
+        backend.pressed_keys[0x41] = (0x1E, 0, 101)
+
+        with patch("apex.adapters.windows.input_backends.IS_WINDOWS", False):
+            backend.release_all()
+
+        self.assertFalse(backend.pressed_buttons)
+        self.assertFalse(backend.mouse_capture_targets)
+        self.assertFalse(backend.pressed_keys)
+
     def test_foreign_child_is_rejected(self):
         _session, backend, _calls = self.make_backend()
         with self.assertRaises(TargetWindowError):

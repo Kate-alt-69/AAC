@@ -211,9 +211,13 @@ class WindowMessageInputBackend:
 
     def key_up(self, vk: int, scan: int = 0, *, system: bool = False, extended: bool = False) -> InputDispatchReceipt:
         pressed = self.pressed_keys.get(int(vk))
-        target = self._validate_target(pressed[2]) if pressed else self._validate_target(
-            self.session.focused_control()
-        )
+        if pressed:
+            # Use the exact scan-code/extended-key identity and control that saw key-down.
+            scan = pressed[0]
+            extended = bool(pressed[1])
+            target = self._validate_target(pressed[2])
+        else:
+            target = self._validate_target(self.session.focused_control())
         lparam = 1 | ((int(scan) & 0xFF) << 16) | (1 << 30) | (1 << 31)
         if extended:
             lparam |= 1 << 24
@@ -239,6 +243,7 @@ class WindowMessageInputBackend:
         """Best-effort release of keys/buttons owned by this backend."""
         if not IS_WINDOWS:
             self.pressed_buttons.clear()
+            self.mouse_capture_targets.clear()
             self.pressed_keys.clear()
             return
         try:
@@ -255,6 +260,7 @@ class WindowMessageInputBackend:
                     self.pressed_keys.pop(vk, None)
         except Exception:
             self.pressed_buttons.clear()
+            self.mouse_capture_targets.clear()
             self.pressed_keys.clear()
 
 
