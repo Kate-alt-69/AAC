@@ -3,6 +3,7 @@ apex/tests/test_architecture.py
 Automated Test Suite verifying Phase 0 through Phase 6 of the Apex Automation Engine Architecture.
 """
 import unittest
+from pathlib import Path
 from apex.core.coordinate_spaces import CoordinateSpace, CoordinateConverter
 from apex.core.geometry import Vertex2D, Vector2D
 from apex.core.event_model import InteractionEvent
@@ -40,13 +41,41 @@ class TestApexArchitecture(unittest.TestCase):
         prof_np = CapabilityRegistry.inspect(None, "Untitled - Notepad", "Notepad")
         self.assertEqual(prof_np.profile_id, "notepad")
         self.assertTrue(prof_np.capabilities["background_input"])
+        self.assertTrue(prof_np.capabilities["window_message_input"])
+        self.assertIn("queued-unverified", prof_np.capabilities["input_verification"])
 
         prof_rb = CapabilityRegistry.inspect(None, "Roblox", "WINDOWSCLIENT")
-        self.assertEqual(prof_rb.adapter_type, "DIRECTX_GAME_ADAPTER")
+        self.assertEqual(prof_rb.adapter_type, "FOREGROUND_GAME_INPUT")
+        self.assertFalse(prof_rb.capabilities["window_message_input"])
         self.assertTrue(prof_rb.capabilities["requires_foreground"])
 
         self.assertTrue(ApplicationStateProfile.is_sensitive_context("My Bank Password Login"))
         self.assertFalse(ApplicationStateProfile.is_sensitive_context("Untitled - Notepad"))
+
+
+    def test_target_window_coordinate_and_message_packing(self):
+        from apex.adapters.windows.target_session import TargetWindowSession
+
+        self.assertEqual(TargetWindowSession.clamp_client_point(-4, 999, 800, 600), (0, 599))
+        self.assertEqual(TargetWindowSession.resolve_normalized_point(0.5, 1.0, 800, 600), (400, 599))
+        self.assertEqual(TargetWindowSession.pack_client_lparam(0x1234, 0x5678), 0x56781234)
+        self.assertEqual(TargetWindowSession.pack_screen_lparam(-1, -2), 0xFFFEFFFF)
+        self.assertEqual(TargetWindowSession.pack_wheel_wparam(-120), 0xFF880000)
+
+    def test_target_input_router_selects_application_appropriate_route(self):
+        from apex.core.input_router import InputRouter
+
+        router = InputRouter()
+        normal_route, normal_profile = router.select_route(None, "Untitled - Notepad", "Notepad")
+        game_route, game_profile = router.select_route(None, "Roblox", "WINDOWSCLIENT")
+        browser_route, browser_profile = router.select_route(None, "Firefox", "MozillaWindowClass")
+
+        self.assertEqual(normal_route, InputRouter.ROUTE_WINDOW_MESSAGES)
+        self.assertEqual(game_route, InputRouter.ROUTE_FOREGROUND_SENDINPUT)
+        self.assertEqual(browser_route, InputRouter.ROUTE_FOREGROUND_SENDINPUT)
+        self.assertIn("queued", normal_profile.capabilities["input_verification"])
+        self.assertTrue(game_profile.capabilities["requires_foreground"])
+        self.assertTrue(browser_profile.capabilities["requires_foreground"])
 
     def test_runtime_coordinator_event_schema(self):
         rc = RuntimeCoordinator()
@@ -59,6 +88,13 @@ class TestApexArchitecture(unittest.TestCase):
         self.assertEqual(evt["coordinate_space"], CoordinateSpace.WINDOW_NORMALIZED)
         self.assertEqual(evt["target"]["profile"], "notepad")
         self.assertEqual(evt["duration_ms"], 420)
+
+
+    def test_legacy_entrypoints_match_the_canonical_studio_source(self):
+        root = Path(__file__).resolve().parents[2]
+        canonical = (root / "apex" / "ui" / "studio_app.py").read_bytes()
+        self.assertEqual((root / "apex_autoclicker.py").read_bytes(), canonical)
+        self.assertEqual((root / "apex_autoclicker_fixed.py").read_bytes(), canonical)
 
 
 if __name__ == "__main__":

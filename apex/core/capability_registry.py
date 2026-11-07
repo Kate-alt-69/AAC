@@ -1,136 +1,113 @@
 """
-apex/core/capability_registry.py
-Apex Application Compatibility Layer (AACL) Capability Registry.
+Apex Application Compatibility Layer capability profiles.
+
+Profiles describe available/expected input routes; they do not claim that a
+message was processed merely because Windows accepted it into a queue.
 """
 import os
 import sys
+
 from apex.core.application_state import ApplicationStateProfile
 
 IS_WINDOWS = sys.platform.startswith("win")
 IS_LINUX = sys.platform.startswith("linux")
-IS_MACOS = (sys.platform == "darwin")
+IS_MACOS = sys.platform == "darwin"
 
 
 class CapabilityRegistry:
-    """Discovers application capabilities and selects the proper AACL adapter."""
+    """Classify an application and expose conservative, operation-level routes."""
+
+    GAME_MARKERS = (
+        "roblox", "windowsclient", "minecraft", "lwjgl", "unity", "unreal",
+        "valorant", "csgo", "fortnite", "genshin", "directx", "vulkan",
+    )
+    BROWSER_MARKERS = (
+        "chrome", "msedge", "firefox", "mozilla", "brave", "opera",
+        "chromium", "webkit",
+    )
+
     @classmethod
-    def inspect(cls, hwnd=None, title="", class_name="", client_size=(1280, 720)):
+    def inspect(cls, hwnd=None, title="", class_name="", client_size=(1280, 720), executable=""):
         t_low = (title or "").lower()
         c_low = (class_name or "").lower()
+        e_low = os.path.basename(executable or "").lower()
+        identity = f"{t_low} {c_low} {e_low}"
 
-        # 1. DirectX / 3D Games (Roblox, Minecraft, Unity, Unreal)
-        if any(g in t_low or g in c_low for g in [
-            "roblox", "windowsclient", "minecraft", "lwjgl", "unity", "unreal", "valorant", "csgo", "fortnite"
-        ]):
+        if any(marker in identity for marker in cls.GAME_MARKERS):
+            is_roblox = "roblox" in identity or "windowsclient" in identity
             return ApplicationStateProfile(
-                profile_id="roblox_directx_game" if "roblox" in t_low or "windowsclient" in c_low else "directx_3d_game",
-                executable="RobloxPlayerBeta.exe" if "roblox" in t_low else "GameEngine.exe",
-                window_class=class_name or "WINDOWSCLIENT",
-                title=title or "3D Game Client",
+                profile_id="roblox_client" if is_roblox else "foreground_game",
+                executable=e_low or ("RobloxPlayerBeta.exe" if is_roblox else "game.exe"),
+                window_class=class_name or "GameWindow",
+                title=title or ("Roblox" if is_roblox else "3D Game"),
                 client_size=client_size,
-                adapter_type="DIRECTX_GAME_ADAPTER",
+                adapter_type="FOREGROUND_GAME_INPUT",
                 capabilities={
+                    "window_message_input": False,
                     "background_input": False,
-                    "uia_scroll_pattern": False,
-                    "frame_capture": "DXGI Desktop Duplication / WGC",
                     "requires_foreground": True,
-                    "input_backend": "DirectInput / RawInput Hardware Synthesis",
-                    "notes": "3D Game consumes RawInput/DirectInput; requires foreground hardware dispatch."
-                }
+                    "input_backend": "Foreground SendInput (shared desktop stream)",
+                    "frame_capture": "NOT_PROBED",
+                    "input_verification": "foreground-guarded; application acceptance must be observed",
+                    "notes": "Game/Raw Input clients commonly ignore posted HWND messages. No DLL injection or anti-cheat bypass is used.",
+                },
             )
 
-        # 2. Browsers (Chrome, Edge, Firefox, Brave)
-        if any(b in t_low or b in c_low for b in ["chrome", "msedge", "firefox", "mozilla", "brave", "opera"]):
+        if any(marker in identity for marker in cls.BROWSER_MARKERS):
             return ApplicationStateProfile(
-                profile_id="browser_adaptive_dom",
-                executable="browser.exe",
-                window_class=class_name or "Chrome_WidgetWin_1",
+                profile_id="browser_foreground_fallback",
+                executable=e_low or "browser.exe",
+                window_class=class_name or "BrowserWindow",
                 title=title or "Web Browser",
                 client_size=client_size,
-                adapter_type="BROWSER_CDP_BIDI_ADAPTER",
+                adapter_type="BROWSER_FOREGROUND_FALLBACK",
                 capabilities={
-                    "background_input": True,
-                    "uia_scroll_pattern": True,
-                    "adaptive_scroll": True,
-                    "frame_capture": "PrintWindow PW_RENDERFULLCONTENT / WGC",
-                    "requires_foreground": False,
-                    "input_backend": "ChildHWND Message Queue + CDP/BiDi Adaptive Scroll",
-                    "notes": "Supports Dynamic Webpage Scroll Ratio (scrollTop / scrollHeight) & isolated clicks."
-                }
+                    "window_message_input": False,
+                    "background_input": False,
+                    "requires_foreground": True,
+                    "input_backend": "Foreground SendInput; CDP/WebDriver adapters are not connected",
+                    "frame_capture": "NOT_PROBED",
+                    "input_verification": "foreground-guarded; application acceptance must be observed",
+                    "notes": "Browser protocol adapters are planned but not active in this runtime path.",
+                },
             )
 
-        # 3. Windows Modern UWP / WinUI Apps
-        if "applicationframewindow" in c_low or "settings" in t_low or "calculator" in t_low:
+        if "applicationframewindow" in c_low or "windows.ui.core" in c_low or "calculator" in identity:
             return ApplicationStateProfile(
-                profile_id="windows_uwp_modern",
-                executable="ApplicationFrameHost.exe",
+                profile_id="windows_modern_app",
+                executable=e_low or "ApplicationFrameHost.exe",
                 window_class=class_name or "ApplicationFrameWindow",
-                title=title or "Windows UWP App",
+                title=title or "Windows Modern App",
                 client_size=client_size,
-                adapter_type="WINDOWS_UIA_WINRT_ADAPTER",
+                adapter_type="FOREGROUND_WINDOWS_INPUT",
                 capabilities={
-                    "background_input": True,
-                    "uia_scroll_pattern": True,
-                    "frame_capture": "PrintWindow PW_RENDERFULLCONTENT",
-                    "requires_foreground": False,
-                    "input_backend": "UI Automation + Thread-Attached Message Queue",
-                    "notes": "Supports UWP state restoration and Target Session dispatch."
-                }
+                    "window_message_input": False,
+                    "background_input": False,
+                    "requires_foreground": True,
+                    "input_backend": "Foreground SendInput (shared desktop stream)",
+                    "frame_capture": "NOT_PROBED",
+                    "input_verification": "foreground-guarded; semantic UIA adapter not yet connected",
+                    "notes": "Modern windowless controls may not process posted keyboard/mouse messages.",
+                },
             )
 
-        # 4. Notepad & Standard Win32 Apps
-        if "notepad" in t_low or "notepad" in c_low:
-            return ApplicationStateProfile(
-                profile_id="notepad",
-                executable="notepad.exe",
-                window_class=class_name or "Notepad",
-                title=title or "Notepad",
-                client_size=client_size,
-                adapter_type="WIN32_UIA_ADAPTER",
-                capabilities={
-                    "background_input": True,
-                    "uia_scroll_pattern": True,
-                    "frame_capture": "Win32 PrintWindow / WGC",
-                    "requires_foreground": False,
-                    "input_backend": "Isolated ChildHWND PostMessageW (VK + Mouse)",
-                    "notes": "Full Target Session isolation supported."
-                }
-            )
-
-        # 5. Linux X11 / Wayland
-        if IS_LINUX:
-            session_type = os.environ.get("XDG_SESSION_TYPE", "x11").lower()
-            is_wayland = ("wayland" in session_type)
-            return ApplicationStateProfile(
-                profile_id=f"linux_{session_type}_app",
-                executable="linux_bin",
-                window_class=class_name or "X11Window",
-                title=title or "Linux Application",
-                client_size=client_size,
-                adapter_type="LINUX_WAYLAND_PORTAL" if is_wayland else "LINUX_X11_XTEST",
-                capabilities={
-                    "background_input": not is_wayland,
-                    "uia_scroll_pattern": True,
-                    "frame_capture": "PipeWire ScreenCast" if is_wayland else "XGetImage",
-                    "requires_foreground": is_wayland,
-                    "input_backend": "XDG RemoteDesktop Portal / libei" if is_wayland else "X11 XTEST / XSendEvent",
-                    "notes": "Wayland uses native portal permissions; X11 supports direct window targeting."
-                }
-            )
-
+        # Classic Win32/message-driven windows can be addressed without taking
+        # foreground focus, but PostMessage is explicitly best-effort.
+        is_notepad = "notepad" in identity or c_low in ("edit", "richedit20w", "richedit50w")
         return ApplicationStateProfile(
-            profile_id="win32_desktop_app",
-            executable="win32_app.exe",
-            window_class=class_name or "Win32Window",
-            title=title or "Desktop Application",
+            profile_id="classic_win32" if not is_notepad else "notepad",
+            executable=e_low or ("notepad.exe" if is_notepad else "win32_app.exe"),
+            window_class=class_name or ("Notepad" if is_notepad else "Win32Window"),
+            title=title or ("Notepad" if is_notepad else "Desktop Application"),
             client_size=client_size,
-            adapter_type="WIN32_UIA_ADAPTER",
+            adapter_type="WIN32_WINDOW_MESSAGE_ADAPTER",
             capabilities={
+                "window_message_input": True,
                 "background_input": True,
-                "uia_scroll_pattern": True,
-                "frame_capture": "Win32 PrintWindow / WGC",
                 "requires_foreground": False,
-                "input_backend": "Isolated ChildHWND PostMessageW (VK + Mouse)",
-                "notes": "Full Target Session isolation supported."
-            }
+                "input_backend": "Target HWND PostMessageW (best-effort queueing)",
+                "frame_capture": "NOT_PROBED",
+                "input_verification": "queued-unverified; target app may ignore messages",
+                "notes": "Input is scoped to the locked HWND. Raw Input/DirectInput applications require foreground system input.",
+            },
         )

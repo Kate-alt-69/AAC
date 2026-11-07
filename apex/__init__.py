@@ -1,2 +1,11 @@
-"""Apex Automation Engine v11.0 Modular Architecture"""
-__version__ = "11.0.0"
+"""Apex Auto-Clicker application package."""
+from .version import (
+    MACRO_SCHEMA_VERSION,
+    PRODUCT_NAME,
+    PRODUCT_VERSION,
+    PUBLISHER_NAME,
+    RELEASE_TAG,
+    RELEASE_VERSION,
+)
+
+__version__ = PRODUCT_VERSION

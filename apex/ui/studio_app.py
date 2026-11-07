@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-⚡ Apex Auto-Clicker & Macro Studio Ultra Pro (v9.5 Complete Edition)
+⚡ Apex Auto-Clicker & Macro Studio (v1.1)
 The definitive high-performance, pixel-accurate desktop automation suite.
 
 Complete Feature & Settings Verification:
@@ -8,8 +8,7 @@ Complete Feature & Settings Verification:
     - Never targets Apex Auto-Clicker itself.
     - Uses WindowFromPoint and GetAncestor(GA_ROOT) on coordinates to lock target (e.g. Roblox Client, Chrome, etc.).
  2. App & Game Engine Recognizer (Roblox / 3D Games vs React / Win32 / UWP):
-    - GAME: 3D Game Engines (Roblox, Minecraft, Unity, Unreal) -> Dispatches hardware DirectInput clicks.
-      Roblox NEVER drops clicks even during background hand-off (uses fleeting micro-flick hardware injection).
+    - GAME: 3D Game Engines (Roblox, Minecraft, Unity, Unreal) -> Foreground-only guarded system input; background HWND messages are not treated as game input.
     - REACT_WEB: Modern Electron / React / Web Apps (Discord, VSCode, Chrome).
     - UWP: Native Windows Modern Apps (Settings, Calculator, Photos) via AttachThreadInput focus bypass.
     - STANDARD: Win32 Desktop Apps.
@@ -44,6 +43,12 @@ import random
 import threading
 import urllib.request
 from datetime import datetime
+
+from apex.version import MACRO_SCHEMA_VERSION, PRODUCT_VERSION
+from apex.adapters.windows.target_session import TargetWindowSession, TargetWindowError
+from apex.adapters.windows.input_backends import create_backend
+from apex.core.input_router import InputRouter
+from apex.core.capability_registry import CapabilityRegistry as CoreCapabilityRegistry
 
 # Windows Native APIs & High-DPI Scaling Configuration
 IS_WINDOWS = sys.platform.startswith("win")
@@ -212,7 +217,7 @@ class AppRecognizer:
             "roblox", "windowsclient", "minecraft", "javaw", "unity", "unreal",
             "valve", "csgo", "dota", "fortnite", "valorant", "genshin"
         ]):
-            return "GAME", "🎮 3D Game Engine (DirectInput Hardware Clicks Required)"
+            return "GAME", "🎮 3D Game Engine (Foreground System Input Required; Not Background-Isolated)"
 
         # Check for React / Electron / Modern Web
         if any(e in proc_lower or e in class_lower for e in ["electron", "chrome", "msedge", "firefox", "discord", "slack", "code"]):
@@ -1363,7 +1368,7 @@ class ApexAutoClickerApp(tk.Tk):
     """
     def __init__(self):
         super().__init__()
-        self.title("⚡ Apex Auto-Clicker")
+        self.title(f"⚡ Apex Auto-Clicker v{PRODUCT_VERSION}")
         self.geometry("480x620")
         self.minsize(460, 580)
         self.resizable(True, True)
@@ -2169,15 +2174,10 @@ except ImportError:
 
     class CapabilityRegistry:
         @classmethod
-        def inspect(cls, hwnd=None, title="", class_name="", client_size=(1280, 720)):
-            from types import SimpleNamespace
-            t_low, c_low = (title or "").lower(), (class_name or "").lower()
-            if any(g in t_low or g in c_low for g in ("roblox", "windowsclient", "minecraft", "unity", "unreal")):
-                return SimpleNamespace(profile_id="roblox_directx_game", title=title or "3D Game", window_class=class_name, adapter_type="DIRECTX_GAME_ADAPTER", client_size=client_size, capabilities={"background_input": False, "requires_foreground": True, "input_backend": "DirectInput Hardware Synthesis", "frame_capture": "DXGI / WGC"})
-            if any(b in t_low or b in c_low for b in ("chrome", "msedge", "firefox", "brave")):
-                return SimpleNamespace(profile_id="browser_adaptive_dom", title=title or "Browser", window_class=class_name, adapter_type="BROWSER_CDP_BIDI_ADAPTER", client_size=client_size, capabilities={"background_input": True, "adaptive_scroll": True, "requires_foreground": False, "input_backend": "ChildHWND + Adaptive Scroll", "frame_capture": "PrintWindow PW_RENDERFULLCONTENT"})
-            return SimpleNamespace(profile_id="notepad" if "notepad" in t_low else "win32_desktop_app", title=title or "Desktop App", window_class=class_name, adapter_type="WIN32_UIA_ADAPTER", client_size=client_size, capabilities={"background_input": True, "requires_foreground": False, "input_backend": "Isolated ChildHWND PostMessageW", "frame_capture": "Win32 PrintWindow / WGC"})
-
+        def inspect(cls, hwnd=None, title="", class_name="", client_size=(1280, 720), executable=""):
+            return CoreCapabilityRegistry.inspect(
+                hwnd, title, class_name, client_size, executable=executable
+            )
 
 class AACLDiagnosticsDialog(tk.Toplevel):
     """Live AACL Compatibility & Application State Profile Inspector."""
@@ -2199,7 +2199,7 @@ class AACLDiagnosticsDialog(tk.Toplevel):
         head = tk.Frame(self, bg=THEME["bg_root"], padx=16, pady=10)
         head.pack(fill="x")
         tk.Label(head, text="🛡️ Apex Application Compatibility Layer (AACL)", fg=THEME["text_primary"], bg=THEME["bg_root"], font=THEME["font_title"]).pack(anchor="w")
-        tk.Label(head, text="Modular v11.0 Runtime • Vertex/Vector Coordinate Space & Adapter Diagnostics", fg=THEME["text_secondary"], bg=THEME["bg_root"], font=THEME["font_main"]).pack(anchor="w")
+        tk.Label(head, text=f"Apex v{PRODUCT_VERSION} • Macro schema {MACRO_SCHEMA_VERSION} • Vertex/Vector Coordinate Space & Adapter Diagnostics", fg=THEME["text_secondary"], bg=THEME["bg_root"], font=THEME["font_main"]).pack(anchor="w")
 
         c1 = StyledCard(self, title="1. Recognized Application Identity & Geometry")
         c1.pack(fill="x", padx=16, pady=4)
@@ -2216,12 +2216,12 @@ class AACLDiagnosticsDialog(tk.Toplevel):
 
         c2 = StyledCard(self, title="2. Runtime Streams & Input Capabilities")
         c2.pack(fill="x", padx=16, pady=4)
-        bg_ok = "✅ Supported (Target Session Mode)" if caps.get("background_input") else "⚠️ Foreground Hardware Synthesis Required"
         for k, v in [
-            ("Background Input:", bg_ok),
-            ("Input Backend:", caps.get("input_backend", "Win32 Message Queue")),
-            ("Observation Stream:", caps.get("frame_capture", "PrintWindow PW_RENDERFULLCONTENT")),
-            ("Adaptive Scroll:", "✅ Active (Proportional ScrollHeight/ClientHeight Ratio)"),
+            ("Input Capability:", "Best-effort target HWND messages" if caps.get("window_message_input") else "Foreground shared input required"),
+            ("Input Backend:", caps.get("input_backend", "Not available")),
+            ("Delivery Status:", caps.get("input_verification", "Not verified")),
+            ("Observation Stream:", caps.get("frame_capture", "Not probed")),
+            ("Adaptive Scroll:", "Adapter not connected"),
             ("Modular Package:", "✅ Loaded (apex.core / apex.adapters / apex.runtime)" if HAS_MODULAR_APEX else "Embedded Standalone Mode"),
         ]:
             r = tk.Frame(c2, bg=THEME["bg_card"])
@@ -2235,7 +2235,7 @@ class AACLDiagnosticsDialog(tk.Toplevel):
 
 
 # ==============================================================================
-# TARGET-ISOLATED VIRTUAL WORKSPACE: BOUNDED CURSOR, VK ENGINE & COPY-SPACE
+# TARGET-BOUND VIRTUAL WORKSPACE: BOUNDED CURSOR, INPUT ROUTING & COPY-SPACE
 # ==============================================================================
 class WindowWorkspaceBounds:
     """
@@ -2300,12 +2300,11 @@ class WindowWorkspaceBounds:
 
 class VirtualKeyboardEngine:
     """
-    Per-Window Stateful Virtual Hardware Keyboard (VK Engine).
-    Summoned per target window HWND to dispatch OEM scan-code hardware-imitated
-    WM_KEYDOWN, continuous hold auto-repeat pulses, WM_KEYUP, and WM_CHAR messages
-    strictly to that window's message queue.
-    Prevents global key leakage (e.g. 'Alt + F4' will NEVER shut down the user's laptop
-    or close unrelated foreground windows).
+    Legacy virtual-key mapping helpers.
+
+    Playback dispatches through the capability-selected target input backend.
+    These legacy PostMessage helpers remain only for compatibility and must not
+    be described as genuine isolated hardware input.
     """
     VK_MAP = {
         "enter": 0x0D, "return": 0x0D, "space": 0x20, "backspace": 0x08, "tab": 0x09,
@@ -2428,11 +2427,7 @@ class VirtualKeyboardEngine:
 
 
 class IsolatedMouseDispatcher:
-    """
-    Dispatches isolated mouse movements, clicks, holds, drags, and wheel scrolls
-    directly into the target HWND (and child control at coordinate) via Win32 messages,
-    clamped strictly to the window's workspace bounds.
-    """
+    """Legacy WM-message helpers; active playback uses the target input backend."""
     @staticmethod
     def make_lparam(client_x, client_y):
         return ((int(client_y) & 0xFFFF) << 16) | (int(client_x) & 0xFFFF)
@@ -2484,12 +2479,11 @@ class IsolatedMouseDispatcher:
 
 class VirtualCursorEntity:
     """
-    Independent target-window Virtual Cursor Runtime sprite managed by Python.
-    - Workspace is strictly clamped to the target window's client dimensions.
-    - Never touches or resets the user's physical OS mouse pointer when in Virtual Mode.
-    - Renders an actual pointer shape (sleek neon-green arrow + precision crosshair)
-      both on an optional lightweight screen indicator (when target window is visible)
-      and directly inside the Virtual Display Copy-Space Viewport!
+    Visual-only target-window cursor indicator managed by Python.
+    - Its coordinates are clamped to the target window's client dimensions.
+    - It never sends input and never moves the physical OS mouse pointer.
+    - The selected target input backend separately dispatches interactions; some
+      applications require foreground shared input instead of background messages.
     """
     def __init__(self, root_parent):
         self.root_parent = root_parent
@@ -2609,19 +2603,18 @@ class VirtualCursorEntity:
 
 class VirtualAppViewportWindow(tk.Toplevel):
     """
-    Virtual Display ("Copy-Space") Window.
-    Captures the target window's live visual buffer via Win32 PrintWindow (PW_RENDERFULLCONTENT)
-    even when the target application is completely occluded/covered behind other windows!
-    - Displays the live application UI inside an interactive canvas.
-    - Renders the Green Virtual Cursor, click ripples, drag vectors, and active VK key badges.
-    - Clicking or dragging directly inside this Virtual Display sends isolated clicks/drags
-      or records coordinates directly mapped to the target window's pixel space (e.g. clicking
-      PX 78, 900 in Firefox to open ChatGPT while Firefox stays completely behind your work).
+    Target Window Copy-Space preview.
+    Captures the target window surface through Win32 PrintWindow where the application supports it.
+    - Displays the captured application surface inside a preview canvas.
+    - Renders the visual cursor, click state, drag trail, and keyboard badge.
+    - Clicking or dragging selects target-client coordinates and dispatches through the same
+      capability-selected input backend as macro playback. Foreground-only targets require
+      explicit approval and cannot be controlled in the background.
     """
     def __init__(self, parent_studio):
         super().__init__(parent_studio)
         self.parent_studio = parent_studio
-        self.title("🖥️ Apex Virtual Display (Isolated App Copy-Space)")
+        self.title("🖥️ Apex Target Window Copy-Space")
         self.geometry("780x560")
         self.minsize(560, 420)
         self.configure(bg=THEME["bg_root"])
@@ -2688,7 +2681,7 @@ class VirtualAppViewportWindow(tk.Toplevel):
         bot.pack(fill="x")
         tk.Label(
             bot,
-            text="💡 Left-Click inside Copy-Space to send isolated click or pick coords  •  Drag to test Click-n-Drag  •  Target app can stay behind other windows!",
+            text="💡 Click/drag to set coordinates and preview the virtual cursor. Dispatch uses the locked target's selected input route; foreground-only apps require approval.",
             fg=THEME["text_muted"],
             bg=THEME["bg_root"],
             font=("Segoe UI", 9)
@@ -2709,26 +2702,36 @@ class VirtualAppViewportWindow(tk.Toplevel):
         self.drag_start_client = (tx, ty)
         vc = self.parent_studio.virtual_cursor
         vc.set_position(tx, ty, is_client_coords=True, state="DOWN")
-        hwnd = self.parent_studio.recorded_target_hwnd
-        if hwnd:
-            IsolatedMouseDispatcher.button_down(hwnd, tx, ty, "left")
+        try:
+            backend = self.parent_studio._ensure_target_input_backend()
+            if backend:
+                backend.mouse_move(tx, ty)
+                backend.button_down(tx, ty, "left")
+        except TargetWindowError as exc:
+            messagebox.showwarning("Target Input Unavailable", str(exc))
 
     def _on_canvas_drag(self, event):
         tx, ty = self._canvas_to_client_coords(event.x, event.y)
         vc = self.parent_studio.virtual_cursor
         vc.set_position(tx, ty, is_client_coords=True, state="DRAG")
-        hwnd = self.parent_studio.recorded_target_hwnd
-        if hwnd:
-            IsolatedMouseDispatcher.move(hwnd, tx, ty, button_held="left")
+        try:
+            backend = self.parent_studio._ensure_target_input_backend()
+            if backend:
+                backend.mouse_move(tx, ty, button_held="left")
+        except TargetWindowError as exc:
+            messagebox.showwarning("Target Input Unavailable", str(exc))
 
     def _on_canvas_up(self, event):
         tx, ty = self._canvas_to_client_coords(event.x, event.y)
         vc = self.parent_studio.virtual_cursor
         vc.set_position(tx, ty, is_client_coords=True, state="HOVER")
-        hwnd = self.parent_studio.recorded_target_hwnd
-        if hwnd:
-            IsolatedMouseDispatcher.button_up(hwnd, tx, ty, "left")
-        # Also populate Studio Inspector if an item is selected
+        try:
+            backend = self.parent_studio._ensure_target_input_backend()
+            if backend:
+                backend.button_up(tx, ty, "left")
+        except TargetWindowError as exc:
+            self.parent_studio._release_target_input()
+            messagebox.showwarning("Target Input Unavailable", str(exc))
         self.parent_studio.on_viewport_coord_clicked(tx, ty, self.drag_start_client)
         self.drag_start_client = None
 
@@ -2736,10 +2739,14 @@ class VirtualAppViewportWindow(tk.Toplevel):
         tx, ty = self._canvas_to_client_coords(event.x, event.y)
         vc = self.parent_studio.virtual_cursor
         vc.set_position(tx, ty, is_client_coords=True, state="DOWN")
-        hwnd = self.parent_studio.recorded_target_hwnd
-        if hwnd:
-            IsolatedMouseDispatcher.button_down(hwnd, tx, ty, "right")
-            IsolatedMouseDispatcher.button_up(hwnd, tx, ty, "right")
+        try:
+            backend = self.parent_studio._ensure_target_input_backend()
+            if backend:
+                backend.mouse_move(tx, ty)
+                backend.button_down(tx, ty, "right")
+                backend.button_up(tx, ty, "right")
+        except TargetWindowError as exc:
+            messagebox.showwarning("Target Input Unavailable", str(exc))
         self.after(150, lambda: vc.set_state("HOVER"))
 
     def _capture_window_image(self, hwnd):
@@ -2799,7 +2806,7 @@ class VirtualAppViewportWindow(tk.Toplevel):
         w_client, h_client = WindowWorkspaceBounds.get_client_size(hwnd)
         self.last_capture_size = (w_client, h_client)
 
-        self.lbl_target_info.config(text=f"🎯 Isolated Workspace: {title[:28]} ({w_client}x{h_client} px)")
+        self.lbl_target_info.config(text=f"🎯 Target Workspace: {title[:28]} ({w_client}x{h_client} px)")
         self.lbl_cursor_telemetry.config(
             text=f"Green Cursor: ({vc.client_x}, {vc.client_y}) [{vc.state}] | VK: {vc.active_key_badge or 'Ready'}"
         )
@@ -2832,7 +2839,7 @@ class VirtualAppViewportWindow(tk.Toplevel):
         else:
             self._draw_schematic_grid(cw, ch, w_client, h_client)
 
-        # Draw Virtual Cursor inside Copy-Space
+        # Draw visual cursor feedback inside target Copy-Space
         vx_canvas = self.offset_x + int(vc.client_x / max(self.scale_x, 0.001))
         vy_canvas = self.offset_y + int(vc.client_y / max(self.scale_y, 0.001))
 
@@ -2844,7 +2851,7 @@ class VirtualAppViewportWindow(tk.Toplevel):
                 trail_pts.append(self.offset_y + int(ty / max(self.scale_y, 0.001)))
             self.canvas.create_line(*trail_pts, fill="#F59E0B", width=2, dash=(4, 2))
 
-        # Draw Green Virtual Cursor Arrow
+        # Draw green visual pointer arrow
         c_col = "#10B981" if vc.state == "HOVER" else ("#F43F5E" if vc.state == "DOWN" else "#F59E0B")
         arrow_pts = [
             vx_canvas, vy_canvas,
@@ -2889,7 +2896,7 @@ class VirtualAppViewportWindow(tk.Toplevel):
 
         self.canvas.create_text(
             self.offset_x + disp_w // 2, self.offset_y + disp_h // 2,
-            text=f"Isolated Virtual Workspace ({w_client} x {h_client} px)\nClick or Drag anywhere to interact in Copy-Space",
+            text=f"Target Window Workspace ({w_client} x {h_client} px)\nClick or Drag to preview coordinates and use the selected target input route",
             fill=THEME["text_muted"], font=THEME["font_bold"], justify="center"
         )
 
@@ -3355,7 +3362,7 @@ class MacroStudioTimelineEditor(tk.Toplevel):
         self._combo_field(self.mouse_move_fields, "Movement curve", self.var_curve, self.CURVES, self._auto_sync_from_deck)
         tk.Label(
             self.mouse_move_fields,
-            text="Moves the target-app cursor to this point. Virtual Cursor Runtime keeps your desktop pointer independent.",
+            text="Moves the visual cursor indicator to this target-client point. Actual input uses the selected target route.",
             bg=THEME["bg_card"], fg=THEME["text_muted"], font=THEME["font_main"],
             justify="left", wraplength=270
         ).pack(anchor="w", pady=(1, 2))
@@ -3420,7 +3427,7 @@ class MacroStudioTimelineEditor(tk.Toplevel):
                            highlightbackground=THEME["border"], highlightthickness=1, padx=9, pady=8)
         self.runtime_card = runtime
         runtime.pack(fill="x", pady=(0, 8))
-        tk.Label(runtime, text="VIRTUAL CURSOR RUNTIME", bg=THEME["bg_input"],
+        tk.Label(runtime, text="TARGET CURSOR FEEDBACK", bg=THEME["bg_input"],
                  fg=THEME["accent_emerald"], font=THEME["font_badge"]).pack(anchor="w")
         tk.Label(
             runtime,
@@ -3494,7 +3501,7 @@ class MacroStudioTimelineEditor(tk.Toplevel):
         if transform == "Mouse Drag":
             return "Click-n-Drag (Move while Holding)"
         if transform == "Mouse Move":
-            return "Move Only (Virtual Cursor Runtime)"
+            return "Move Only (Target Pointer Movement)"
         if transform == "Mouse Scroll":
             return "Scroll Wheel"
         return {"Double Click": "Double Click", "Press & Hold": "Press & Hold"}.get(
@@ -3762,7 +3769,7 @@ class MacroStudioTimelineEditor(tk.Toplevel):
                      "curve": "Bézier Human", "scroll_dx": 0, "scroll_dy": -2}
         elif block_type == "MOUSE_MOVE":
             block = {"category": "MOUSE", "start": start, "duration": 0.40,
-                     "mode": "Move Only (Virtual Cursor Runtime)", "button": "left",
+                     "mode": "Move Only (Target Pointer Movement)", "button": "left",
                      "x": 640, "y": 360, "end_x": 640, "end_y": 360,
                      "curve": "Bézier Human", "scroll_dx": 0, "scroll_dy": -2}
         elif block_type == "MOUSE_SCROLL":
@@ -4047,10 +4054,20 @@ class MacroStudioWindow(tk.Toplevel):
         self.recorded_target_hwnd = parent_app.target_window_hwnd
         self.recorded_target_title = parent_app.target_window_title if parent_app.target_window_title != "None" else "Default Application"
         self.recorded_origin_pos = (100, 100)
+        self.target_session = None
+        self.input_router = InputRouter()
+        self.input_route = None
+        self.input_profile = None
+        self.input_backend = None
+        self.playback_failed = False
+        self._runtime_pressed_keys = set()
 
         # Target-app runtime and independent virtual cursor settings
         self.use_virtual_cursor = tk.BooleanVar(value=True)
-        self.use_isolated_vk = tk.BooleanVar(value=True)
+        # Shared by mouse and keyboard: prefer per-window messages, falling
+        # back only when the selected application requires foreground input.
+        self.prefer_target_window_input = tk.BooleanVar(value=True)
+        self.use_isolated_vk = self.prefer_target_window_input  # legacy settings alias
         self.clamp_to_target_bounds = tk.BooleanVar(value=True)
         self.virtual_cursor = VirtualCursorEntity(self)
         self.viewport_window = None
@@ -4106,6 +4123,12 @@ class MacroStudioWindow(tk.Toplevel):
         self._build_timeline_and_inspector()
         self._build_playback_controls()
         self._build_footer()
+        if IS_WINDOWS and self.recorded_target_hwnd:
+            try:
+                self._bind_target_window(self.recorded_target_hwnd, self.recorded_target_title, notify=False)
+            except TargetWindowError:
+                self.recorded_target_hwnd = None
+                self.target_session = None
 
         self._setup_macro_hotkeys()
         self._flush_ui_loop()
@@ -4213,7 +4236,7 @@ class MacroStudioWindow(tk.Toplevel):
         self.lbl_record_status.pack(side="right")
 
     def _build_virtual_workspace_bar(self):
-        card = StyledCard(self, title="🟢 Target App Runtime  ·  Virtual Cursor & Isolated Keyboard")
+        card = StyledCard(self, title="🟢 Target App Runtime  ·  Window-Bound Cursor & Input Routing")
         card.pack(fill="x", padx=18, pady=3)
 
         r1 = tk.Frame(card, bg=THEME["bg_card"])
@@ -4221,7 +4244,7 @@ class MacroStudioWindow(tk.Toplevel):
 
         tk.Checkbutton(
             r1,
-            text="🟢 Virtual Cursor Runtime",
+            text="🟢 Virtual Cursor Feedback (visual only)",
             variable=self.use_virtual_cursor,
             bg=THEME["bg_card"],
             fg=THEME["accent_emerald"],
@@ -4231,8 +4254,8 @@ class MacroStudioWindow(tk.Toplevel):
 
         tk.Checkbutton(
             r1,
-            text="⌨️ Isolated VK Keyboard (Alt+F4 / Keys hit Target App ONLY)",
-            variable=self.use_isolated_vk,
+            text="🪟 Prefer target-window input (AUTO)",
+            variable=self.prefer_target_window_input,
             bg=THEME["bg_card"],
             fg=THEME["text_primary"],
             selectcolor=THEME["bg_input"],
@@ -4256,9 +4279,15 @@ class MacroStudioWindow(tk.Toplevel):
         help_row.pack(fill="x", pady=(1, 3))
         tk.Label(
             help_row,
-            text="Keeps an independent cursor inside the locked app while your desktop mouse stays free.",
+            text="The virtual cursor is visual feedback. AUTO routes mouse + keys to the locked window where supported; Raw Input / game clients require shared foreground input.",
             bg=THEME["bg_card"], fg=THEME["text_muted"], font=("Segoe UI", 8)
         ).pack(anchor="w")
+        self.lbl_runtime_route = tk.Label(
+            help_row,
+            text="Input route: lock a target window to inspect compatibility.",
+            bg=THEME["bg_card"], fg=THEME["accent_amber"], font=("Segoe UI", 8, "bold")
+        )
+        self.lbl_runtime_route.pack(anchor="w", pady=(2, 0))
 
         r2 = tk.Frame(card, bg=THEME["bg_card"])
         r2.pack(fill="x", pady=(2, 0))
@@ -4476,18 +4505,138 @@ class MacroStudioWindow(tk.Toplevel):
 
         AddBlockPopupDialog(self, _on_picked)
 
+    @staticmethod
+    def _format_target_route_status(route, detail):
+        if route == "WINDOW_MESSAGES":
+            return f"TARGET-WINDOW INPUT · queued/unverified · {detail}"
+        if route == "FOREGROUND_SENDINPUT":
+            return f"FOREGROUND / SHARED INPUT · physical mouse + keyboard · {detail}"
+        return f"{route} · {detail}"
+
+    def _bind_target_window(self, hwnd, title="", class_name="", notify=True):
+        """Capture one stable top-level HWND identity and select its input route."""
+        if not IS_WINDOWS:
+            self.recorded_target_hwnd = hwnd
+            self.recorded_target_title = title or "Target Window"
+            return None
+
+        session = TargetWindowSession.capture(hwnd)
+        self.target_session = session
+        self.recorded_target_hwnd = session.hwnd
+        self.recorded_target_title = session.snapshot.title or title or "Target Window"
+        width, height = session.get_client_size()
+        self.virtual_cursor.bind_target_window(session.hwnd)
+
+        self.input_route, self.input_profile = self.input_router.select_route(
+            session.hwnd,
+            self.recorded_target_title,
+            session.snapshot.class_name or class_name,
+            (width, height),
+            executable=session.snapshot.executable,
+            force_foreground=not self.prefer_target_window_input.get(),
+        )
+        self.input_backend = create_backend(self.input_route, session)
+        details = self.input_profile.capabilities.get("input_verification", "route selected")
+        if hasattr(self, "lbl_isolated_target"):
+            self.lbl_isolated_target.config(
+                text=f"Locked: {self.recorded_target_title[:18]} ({width}x{height})"
+            )
+        if hasattr(self, "lbl_runtime_route"):
+            self.lbl_runtime_route.config(
+                text=self._format_target_route_status(self.input_route, details)
+            )
+        if notify:
+            play_cue(high_pitch=True)
+        return session
+
+    def _screen_to_target_client(self, x, y):
+        if IS_WINDOWS and self.target_session:
+            cx, cy = self.target_session.screen_to_client(self.target_session.hwnd, int(x), int(y))
+            width, height = self.target_session.get_client_size()
+            if cx < 0 or cy < 0 or cx >= width or cy >= height:
+                return None
+            return cx, cy
+        if self.clamp_to_target_bounds.get() and self.recorded_target_hwnd:
+            _, _, cx, cy, _, _ = WindowWorkspaceBounds.clamp_to_window(
+                self.recorded_target_hwnd, x, y, is_client_coords=False
+            )
+            return cx, cy
+        return int(x), int(y)
+
+    def _ensure_target_input_backend(self):
+        """Create a target-bound backend for interactive Copy-Space input."""
+        if not IS_WINDOWS:
+            return None
+        if not self.target_session:
+            raise TargetWindowError("Lock a target application window first.")
+        self.target_session.validate()
+        if self.input_backend is not None:
+            return self.input_backend
+
+        width, height = self.target_session.get_client_size()
+        snapshot = self.target_session.snapshot
+        route, profile = self.input_router.select_route(
+            self.target_session.hwnd,
+            self.recorded_target_title,
+            snapshot.class_name,
+            (width, height),
+            executable=snapshot.executable,
+            force_foreground=not self.prefer_target_window_input.get(),
+        )
+        if route == "FOREGROUND_SENDINPUT":
+            consent = messagebox.askyesno(
+                "Foreground Input Required",
+                "This application needs the shared Windows input stream.\n\n"
+                "The target must be foreground and your physical mouse/keyboard will not be independent. Continue?"
+            )
+            if not consent:
+                raise TargetWindowError("Foreground input was not approved.")
+            if not self.target_session.activate():
+                raise TargetWindowError("Windows did not activate the locked target window.")
+            self.target_session.require_foreground()
+
+        self.input_route = route
+        self.input_profile = profile
+        self.input_backend = create_backend(route, self.target_session)
+        if hasattr(self, "lbl_runtime_route"):
+            detail = profile.capabilities.get("input_verification", "route selected")
+            self.lbl_runtime_route.config(text=self._format_target_route_status(route, detail))
+        return self.input_backend
+
+    def _release_target_input(self):
+        if self.input_backend is not None:
+            try:
+                self.input_backend.release_all()
+            except Exception:
+                pass
+
+    def _handle_playback_failure(self, detail):
+        self.playback_failed = True
+        self.stop_playback_event.set()
+        self._release_target_input()
+        if self.is_playing:
+            self.stop_playback()
+        self.lbl_record_status.config(text="[ TARGET INPUT STOPPED ]", fg=THEME["accent_rose"])
+        messagebox.showerror(
+            "Target Input Stopped",
+            "Apex stopped playback to avoid sending input to the wrong application.\n\n" + str(detail)
+        )
+
     def pick_isolated_target_window(self):
-        messagebox.showinfo("Lock Target Workspace", "Click OK, then click inside your target window (e.g. Firefox, Roblox, Notepad) within 2 seconds!")
+        messagebox.showinfo(
+            "Lock Target Workspace",
+            "Click OK, then activate the target window within 2 seconds."
+        )
         self.update()
         time.sleep(2.0)
         hwnd, title, cname = AppStateManager.get_foreground_window(exclude_hwnds=self._own_window_handles())
-        if hwnd:
-            self.recorded_target_hwnd = hwnd
-            self.recorded_target_title = title or "Target Window"
-            self.virtual_cursor.bind_target_window(hwnd)
-            w, h = WindowWorkspaceBounds.get_client_size(hwnd)
-            self.lbl_isolated_target.config(text=f"Locked: {self.recorded_target_title[:22]} ({w}x{h} px)")
-            play_cue(high_pitch=True)
+        if not hwnd:
+            messagebox.showwarning("No Target", "A target application window could not be identified.")
+            return
+        try:
+            self._bind_target_window(hwnd, title, cname)
+        except TargetWindowError as exc:
+            messagebox.showerror("Target Lock Failed", str(exc))
 
     def open_virtual_viewport(self):
         if self.viewport_window is None or not self.viewport_window.winfo_exists():
@@ -4672,7 +4821,7 @@ class MacroStudioWindow(tk.Toplevel):
                 if "drag" in action_hint:
                     mode = "Click-n-Drag (Move while Holding)"
                 elif "move" in action_hint:
-                    mode = "Move Only (Virtual Cursor Runtime)"
+                    mode = "Move Only (Target Pointer Movement)"
                 elif "scroll" in action_hint or "wheel" in action_hint:
                     mode = "Scroll Wheel"
                 elif "double" in action_hint:
@@ -4759,7 +4908,7 @@ class MacroStudioWindow(tk.Toplevel):
             elif etype == "MOUSE_MOVE":
                 blocks.append({
                     "category": "MOUSE", "start": t, "duration": d.get("duration", 0.15),
-                    "mode": "Move Only (Virtual Cursor Runtime)", "button": "left",
+                    "mode": "Move Only (Target Pointer Movement)", "button": "left",
                     "x": d.get("x", 500), "y": d.get("y", 400),
                     "end_x": d.get("x", 500), "end_y": d.get("y", 400),
                     "curve": "Bézier Human", "scroll_dx": 0, "scroll_dy": -2
@@ -4845,7 +4994,7 @@ class MacroStudioWindow(tk.Toplevel):
         elif etype == "KEY_HOLD":
             mods = d.get("modifiers", [])
             m_str = ("+".join([m.upper() for m in mods]) + "+") if mods else ""
-            desc = f"⌨️ Hold Key [{m_str}{str(d.get('key','w')).upper()}] for {d.get('duration',0.2):.2f}s (Isolated VK)"
+            desc = f"⌨️ Hold Key [{m_str}{str(d.get('key','w')).upper()}] for {d.get('duration',0.2):.2f}s (Target-routed keyboard)"
         elif etype == "MOUSE_DOWN":
             desc = f"🖱️ Press {d.get('button','left').capitalize()} Mouse Down at ({d.get('x',0)}, {d.get('y',0)})"
         elif etype == "MOUSE_UP":
@@ -4855,9 +5004,9 @@ class MacroStudioWindow(tk.Toplevel):
         elif etype == "MOUSE_SCROLL":
             desc = f"🔄 Scroll Wheel (dy={d.get('dy',0)}) at ({d.get('x',0)}, {d.get('y',0)})"
         elif etype == "KEY_DOWN":
-            desc = f"⌨️ Press Key [{str(d.get('key','')).replace('Key.','').upper()}] Down (Isolated VK)"
+            desc = f"⌨️ Press Key [{str(d.get('key','')).replace('Key.','').upper()}] Down (Target-routed keyboard)"
         elif etype == "KEY_UP":
-            desc = f"⌨️ Release Key [{str(d.get('key','')).replace('Key.','').upper()}] Up (Isolated VK)"
+            desc = f"⌨️ Release Key [{str(d.get('key','')).replace('Key.','').upper()}] Up (Target-routed keyboard)"
         elif etype == "DELAY":
             desc = f"⏳ Wait / Hold Delay for {d.get('seconds',0.1):.2f}s"
         elif etype == "IF_COLOR":
@@ -4897,7 +5046,7 @@ class MacroStudioWindow(tk.Toplevel):
         self._refresh_entire_listbox()
 
     def _dlg_add_key(self):
-        k = simpledialog.askstring("Add Isolated VK Key", "Enter Key (e.g. 'w', 'space', 'enter', 'f4'):", parent=self, initialvalue="w")
+        k = simpledialog.askstring("Add Target Keyboard Key", "Enter Key (e.g. 'w', 'space', 'enter', 'f4'):", parent=self, initialvalue="w")
         if not k: return
         hold_s = simpledialog.askfloat("Hold Duration", f"How long to hold [{k.upper()}] in seconds?", parent=self, initialvalue=0.35, minvalue=0.02, maxvalue=60.0) or 0.35
         dur = self.actions[-1]["time"] + 0.1 if self.actions else 0.0
@@ -5023,7 +5172,7 @@ class MacroStudioWindow(tk.Toplevel):
 
         self.btn_play_toggle = ModernButton(
             card,
-            text="▶  PLAY MACRO IN ISOLATED WORKSPACE (F10)",
+            text="▶  PLAY MACRO FOR LOCKED TARGET (F10)",
             command=self.toggle_playback,
             bg_color=THEME["accent_emerald"],
             fg_color="#000000",
@@ -5120,15 +5269,23 @@ if __name__ == "__main__":
 
         hwnd, title, cname = AppStateManager.get_foreground_window(exclude_hwnds=self._own_window_handles())
         if hwnd:
-            self.recorded_target_hwnd = hwnd
-            self.recorded_target_title = title if title else "Target Window"
-            self.virtual_cursor.bind_target_window(hwnd)
-            w, h = WindowWorkspaceBounds.get_client_size(hwnd)
-            self.lbl_isolated_target.config(text=f"Locked: {self.recorded_target_title[:22]} ({w}x{h} px)")
+            try:
+                self._bind_target_window(hwnd, title, cname, notify=False)
+            except TargetWindowError as exc:
+                self.is_recording = False
+                messagebox.showerror("Recording Target Failed", str(exc))
+                return
+        elif IS_WINDOWS and self.target_session is None:
+            self.is_recording = False
+            messagebox.showwarning("Target Required", "Lock and activate an application window before recording.")
+            return
 
         raw_pos = HardwareCursor.get_pos() or (100, 100)
-        _, _, cx, cy, _, _ = WindowWorkspaceBounds.clamp_to_window(self.recorded_target_hwnd, raw_pos[0], raw_pos[1], is_client_coords=False)
-        self.recorded_origin_pos = (cx, cy)
+        origin = self._screen_to_target_client(raw_pos[0], raw_pos[1])
+        if origin is None and self.target_session:
+            width, height = self.target_session.get_client_size()
+            origin = (width // 2, height // 2)
+        self.recorded_origin_pos = origin if origin is not None else (100, 100)
 
         play_cue(high_pitch=True)
         self.btn_rec_toggle.set_text_and_color("⏹  STOP (F9)", THEME["accent_rose"], fg_color="#FFFFFF", hover_color="#FB7185")
@@ -5197,9 +5354,15 @@ if __name__ == "__main__":
         v0 = Vertex2D.from_client(cx, cy, w, h)
         v1 = Vertex2D.from_client(data.get("end_x", cx), data.get("end_y", cy), w, h)
         vec = Vector2D.between(v0, v1)
-        prof = CapabilityRegistry.inspect(self.recorded_target_hwnd, self.recorded_target_title, "", (w, h))
+        prof = CapabilityRegistry.inspect(
+            self.recorded_target_hwnd,
+            self.recorded_target_title,
+            self.target_session.snapshot.class_name if self.target_session else "",
+            (w, h),
+            executable=self.target_session.snapshot.executable if self.target_session else "",
+        )
         entry = {
-            "schema_version": "11.0",
+            "schema_version": MACRO_SCHEMA_VERSION,
             "time": t_rounded,
             "timestamp": t_rounded,
             "type": action_type,
@@ -5239,37 +5402,51 @@ if __name__ == "__main__":
         self.lbl_macro_summary.config(text=f"Events: {len(self.actions)}  |  Duration: {dur:.3f}s")
 
     def _on_hardware_poll_coord(self, x, y, timestamp):
-        if self.clamp_to_target_bounds.get() and self.recorded_target_hwnd:
-            _, _, x, y, _, _ = WindowWorkspaceBounds.clamp_to_window(self.recorded_target_hwnd, x, y, is_client_coords=False)
+        if self.target_session and not self.target_session.is_foreground():
+            return
+        point = self._screen_to_target_client(x, y)
+        if point is None:
+            return
+        x, y = point
         self._append_action("MOUSE_MOVE", {"x": x, "y": y}, timestamp=timestamp)
 
     def _on_record_key_press(self, key):
         if key in (Key.f9, Key.f10): return
+        if self.target_session and not self.target_session.is_foreground(): return
         k_str = key.char if isinstance(key, KeyCode) and key.char else (f"Key.{key.name}" if isinstance(key, Key) else str(key))
         self._append_action("KEY_DOWN", {"key": k_str})
 
     def _on_record_key_release(self, key):
         if key in (Key.f9, Key.f10): return
+        if self.target_session and not self.target_session.is_foreground(): return
         k_str = key.char if isinstance(key, KeyCode) and key.char else (f"Key.{key.name}" if isinstance(key, Key) else str(key))
         self._append_action("KEY_UP", {"key": k_str})
 
     def _on_record_mouse_click(self, x, y, button, pressed):
         if button == Button.left and not self.cap_left_click.get(): return
         if button == Button.right and not self.cap_right_click.get(): return
-        if self.clamp_to_target_bounds.get() and self.recorded_target_hwnd:
-            _, _, x, y, _, _ = WindowWorkspaceBounds.clamp_to_window(self.recorded_target_hwnd, x, y, is_client_coords=False)
+        if self.target_session and not self.target_session.is_foreground():
+            return
+        point = self._screen_to_target_client(x, y)
+        if point is None:
+            return
+        x, y = point
         btn_str = "left" if button == Button.left else ("right" if button == Button.right else "middle")
         evt = "MOUSE_DOWN" if pressed else "MOUSE_UP"
         self._append_action(evt, {"x": int(x), "y": int(y), "button": btn_str})
 
     def _on_record_mouse_scroll(self, x, y, dx, dy):
         if self.cap_scroll.get():
-            if self.clamp_to_target_bounds.get() and self.recorded_target_hwnd:
-                _, _, x, y, _, _ = WindowWorkspaceBounds.clamp_to_window(self.recorded_target_hwnd, x, y, is_client_coords=False)
+            if self.target_session and not self.target_session.is_foreground():
+                return
+            point = self._screen_to_target_client(x, y)
+            if point is None:
+                return
+            x, y = point
             self._append_action("MOUSE_SCROLL", {"x": int(x), "y": int(y), "dx": int(dx), "dy": int(dy)})
 
     # --------------------------------------------------------------------------
-    # ISOLATED PLAYBACK ENGINE (VIRTUAL CURSOR RUNTIME + STATEFUL VK KEYBOARD)
+    # TARGET-BOUND PLAYBACK ENGINE (VISUAL CURSOR + INPUT BACKENDS)
     # --------------------------------------------------------------------------
     def toggle_playback(self):
         if self.is_playing:
@@ -5281,19 +5458,55 @@ if __name__ == "__main__":
         if self.is_playing or self.is_recording or not self.actions:
             return
 
-        if not self.recorded_target_hwnd:
-            hwnd, title, _ = AppStateManager.get_foreground_window(exclude_hwnds=self._own_window_handles())
-            if hwnd:
-                self.recorded_target_hwnd = hwnd
-                self.recorded_target_title = title or "Target Window"
-                self.virtual_cursor.bind_target_window(hwnd)
+        if IS_WINDOWS:
+            try:
+                if self.target_session is None:
+                    hwnd = self.recorded_target_hwnd
+                    if not hwnd:
+                        hwnd, title, cname = AppStateManager.get_foreground_window(
+                            exclude_hwnds=self._own_window_handles()
+                        )
+                        if not hwnd:
+                            raise TargetWindowError("Lock a target application window before playback.")
+                        self._bind_target_window(hwnd, title, cname, notify=False)
+                else:
+                    self.target_session.validate()
 
-        if IS_WINDOWS and self.use_virtual_cursor.get() and not self.recorded_target_hwnd:
-            messagebox.showwarning(
-                "Target Window Required",
-                "Virtual Cursor Runtime needs a locked target window. Use 'Lock Target App' in Macro Studio, then start playback again."
-            )
-            return
+                width, height = self.target_session.get_client_size()
+                snapshot = self.target_session.snapshot
+                self.input_route, self.input_profile = self.input_router.select_route(
+                    self.target_session.hwnd,
+                    self.recorded_target_title,
+                    snapshot.class_name,
+                    (width, height),
+                    executable=snapshot.executable,
+                    force_foreground=not self.prefer_target_window_input.get(),
+                )
+                self.input_backend = create_backend(self.input_route, self.target_session)
+
+                if self.input_route == "FOREGROUND_SENDINPUT":
+                    consent = messagebox.askyesno(
+                        "Foreground Input Required",
+                        "This application does not have a reliable background window-message route.\n\n"
+                        "Apex must use the shared Windows input stream while this target is foreground. "
+                        "The real desktop cursor/keyboard are not isolated, and switching apps will stop playback.\n\n"
+                        "Bring the locked target to the foreground and continue?"
+                    )
+                    if not consent:
+                        self.input_backend = None
+                        return
+                    if not self.target_session.activate():
+                        raise TargetWindowError("Windows did not activate the locked target window.")
+                    time.sleep(0.12)
+                    self.target_session.require_foreground()
+
+                if hasattr(self, "lbl_runtime_route"):
+                    detail = self.input_profile.capabilities.get("input_verification", "route selected")
+                    self.lbl_runtime_route.config(text=self._format_target_route_status(self.input_route, detail))
+            except TargetWindowError as exc:
+                self.input_backend = None
+                messagebox.showerror("Target Session Invalid", str(exc))
+                return
 
         speed_str = self.speed_var.get()
         speed_mult = 999.0 if "Max" in speed_str else float(speed_str.replace("x", "") or 1.0)
@@ -5301,16 +5514,41 @@ if __name__ == "__main__":
         traj_mode = self.trajectory_mode_var.get()
 
         self.is_playing = True
+        self.playback_failed = False
+        self._runtime_pressed_keys.clear()
         self.stop_playback_event.clear()
         play_cue(high_pitch=True)
 
         self.btn_play_toggle.set_text_and_color("⏹  STOP PLAYBACK (F10)", THEME["accent_rose"], fg_color="#FFFFFF", hover_color="#FB7185")
-        self.lbl_record_status.config(text="[ PLAYING ISOLATED... ]", fg=THEME["accent_emerald"])
+        route_label = "TARGET-WINDOW" if self.input_route == "WINDOW_MESSAGES" else (
+            "FOREGROUND / SHARED" if self.input_route == "FOREGROUND_SENDINPUT" else "DESKTOP"
+        )
+        self.lbl_record_status.config(text=f"[ PLAYING · {route_label} ]", fg=THEME["accent_emerald"])
 
         if self.auto_hide_play_var.get():
             self.withdraw()
             if self.show_click_through_banner.get():
                 self.top_banner = ClickThroughTopBanner(mode="PLAY", hotkey_hint="F10")
+            if IS_WINDOWS and self.input_route == "FOREGROUND_SENDINPUT" and self.target_session:
+                activated = self.target_session.activate()
+                time.sleep(0.08)
+                try:
+                    if not activated:
+                        raise TargetWindowError("Windows did not activate the locked target window.")
+                    self.target_session.require_foreground()
+                except TargetWindowError as exc:
+                    self._handle_playback_failure(str(exc))
+                    return
+
+        if IS_WINDOWS and self.input_route == "FOREGROUND_SENDINPUT" and self.target_session:
+            try:
+                if not self.target_session.activate():
+                    raise TargetWindowError("Windows did not activate the locked target window.")
+                time.sleep(0.08)
+                self.target_session.require_foreground()
+            except TargetWindowError as exc:
+                self._handle_playback_failure(str(exc))
+                return
 
         self._restore_native_app_state()
 
@@ -5319,38 +5557,48 @@ if __name__ == "__main__":
             self.cooldown_worker = CooldownManager(self.keyboard_controller, active_cds)
             self.cooldown_worker.start()
 
-        threading.Thread(target=self._playback_worker, args=(speed_mult, loops, traj_mode), daemon=True).start()
-
+        threading.Thread(
+            target=self._playback_worker,
+            args=(speed_mult, loops, traj_mode),
+            daemon=True
+        ).start()
     def _restore_native_app_state(self):
-        if self.auto_focus_target.get() and not self.use_virtual_cursor.get() and self.recorded_target_hwnd:
-            AppStateManager.robust_focus_window(self.recorded_target_hwnd)
+        if self.auto_focus_target.get() and self.target_session and self.input_route == "FOREGROUND_SENDINPUT":
+            AppStateManager.robust_focus_window(self.target_session.hwnd)
             time.sleep(0.05)
 
         if self.warp_to_origin.get() and self.recorded_origin_pos:
             ox, oy = self.recorded_origin_pos
             if self.use_virtual_cursor.get():
-                self.after(0, lambda: self.virtual_cursor.set_position(ox, oy, is_client_coords=True, state="HOVER"))
-            else:
-                if not HardwareCursor.set_pos(ox, oy):
-                    self.mouse_controller.position = (ox, oy)
+                self.after(0, lambda: self.virtual_cursor.set_position(
+                    ox, oy, is_client_coords=True, state="HOVER"
+                ))
+            if IS_WINDOWS and self.input_backend:
+                self.input_backend.mouse_move(ox, oy)
+            elif not IS_WINDOWS and not self.use_virtual_cursor.get():
+                sx, sy, _, _, _, _ = WindowWorkspaceBounds.clamp_to_window(
+                    self.recorded_target_hwnd, ox, oy, is_client_coords=True
+                )
+                if not HardwareCursor.set_pos(sx, sy):
+                    self.mouse_controller.position = (sx, sy)
             time.sleep(0.02)
 
-        if self.reset_scroll_to_top.get() and self.recorded_target_hwnd:
-            if self.use_isolated_vk.get():
-                VirtualKeyboardEngine.send_key_hold(self.recorded_target_hwnd, "home", duration_sec=0.04, modifiers=["ctrl"])
-            else:
-                try:
-                    self.keyboard_controller.press(Key.ctrl)
-                    self.keyboard_controller.press(Key.home)
-                    self.keyboard_controller.release(Key.home)
-                    self.keyboard_controller.release(Key.ctrl)
-                except Exception:
-                    pass
-
+        if self.reset_scroll_to_top.get() and IS_WINDOWS and self.input_backend:
+            ctrl_vk, ctrl_scan, _ = VirtualKeyboardEngine.resolve_vk_and_scan("ctrl")
+            home_vk, home_scan, _ = VirtualKeyboardEngine.resolve_vk_and_scan("home")
+            self.input_backend.key_down(ctrl_vk, ctrl_scan)
+            try:
+                self.input_backend.key_hold(
+                    home_vk, home_scan, duration=0.04, stop_event=self.stop_playback_event
+                )
+            finally:
+                self.input_backend.key_up(ctrl_vk, ctrl_scan)
     def stop_playback(self):
         if not self.is_playing: return
         self.is_playing = False
         self.stop_playback_event.set()
+        self._release_target_input()
+        self.input_backend = None
 
         if self.cooldown_worker:
             self.cooldown_worker.stop()
@@ -5363,15 +5611,27 @@ if __name__ == "__main__":
         self.deiconify()
         self.lift()
 
-        self.btn_play_toggle.set_text_and_color("▶  PLAY MACRO IN ISOLATED WORKSPACE (F10)", THEME["accent_emerald"], fg_color="#000000", hover_color="#34D399")
+        self.btn_play_toggle.set_text_and_color("▶  PLAY MACRO FOR LOCKED TARGET (F10)", THEME["accent_emerald"], fg_color="#000000", hover_color="#34D399")
         self.lbl_record_status.config(text="[ IDLE ]", fg=THEME["text_secondary"])
 
-        if self.webhook_on_finish.get() and self.webhook_url.get():
+        if not self.playback_failed and self.webhook_on_finish.get() and self.webhook_url.get():
             WebhookNotifier.send_notification(
                 self.webhook_url.get(),
                 "✅ Macro Playback Completed Successfully!",
                 {"Events": len(self.actions), "Duration": f"{self.actions[-1]['time']:.2f}s", "Target": self.recorded_target_title}
             )
+
+    def _handle_playback_failure(self, detail):
+        self.playback_failed = True
+        self.stop_playback_event.set()
+        self._release_target_input()
+        if self.is_playing:
+            self.stop_playback()
+        self.lbl_record_status.config(text="[ TARGET INPUT STOPPED ]", fg=THEME["accent_rose"])
+        messagebox.showerror(
+            "Target Input Stopped",
+            "Apex stopped playback to avoid sending input to the wrong application.\n\n" + str(detail)
+        )
 
     def _playback_worker(self, speed_mult, loop_count, traj_mode):
         iteration = 0
@@ -5414,7 +5674,12 @@ if __name__ == "__main__":
                     step_idx += 1
                     continue
 
-                curr_cursor = self._dispatch_playback_event(act, curr_cursor, traj_mode, speed_mult)
+                try:
+                    curr_cursor = self._dispatch_playback_event(act, curr_cursor, traj_mode, speed_mult)
+                except Exception as exc:
+                    self.stop_playback_event.set()
+                    self.after(0, lambda detail=str(exc): self._handle_playback_failure(detail))
+                    break
                 step_idx += 1
 
             iteration += 1
@@ -5424,141 +5689,186 @@ if __name__ == "__main__":
         self.after(0, self.stop_playback)
 
     def _move_virtual_or_real(self, px, py, state="HOVER", btn_held=None):
-        hwnd = self.recorded_target_hwnd
-        if self.clamp_to_target_bounds.get() and hwnd:
-            _, _, px, py, _, _ = WindowWorkspaceBounds.clamp_to_window(hwnd, px, py, is_client_coords=True)
+        if IS_WINDOWS:
+            if not self.target_session or not self.input_backend:
+                raise TargetWindowError("No active target-window input session. Lock a target and restart playback.")
+            px, py = self.target_session.clamp_point(px, py)
+            if self.use_virtual_cursor.get():
+                self.after(0, lambda x=px, y=py, s=state: self.virtual_cursor.set_position(
+                    x, y, is_client_coords=True, state=s
+                ))
+            self.input_backend.mouse_move(px, py, button_held=btn_held)
+            return (px, py)
 
+        # Non-Windows retains the legacy foreground desktop route until its
+        # native platform adapters are connected to the same target-session API.
         if self.use_virtual_cursor.get():
-            self.after(0, lambda x=px, y=py, s=state: self.virtual_cursor.set_position(x, y, is_client_coords=True, state=s))
-            if hwnd:
-                IsolatedMouseDispatcher.move(hwnd, px, py, button_held=btn_held)
+            self.after(0, lambda x=px, y=py, s=state: self.virtual_cursor.set_position(
+                x, y, is_client_coords=True, state=s
+            ))
         else:
-            sx, sy, _, _, _, _ = WindowWorkspaceBounds.clamp_to_window(hwnd, px, py, is_client_coords=True)
+            sx, sy, _, _, _, _ = WindowWorkspaceBounds.clamp_to_window(
+                self.recorded_target_hwnd, px, py, is_client_coords=True
+            )
             if not HardwareCursor.set_pos(sx, sy):
                 self.mouse_controller.position = (sx, sy)
         return (px, py)
 
     def _dispatch_playback_event(self, act, last_pos, traj_mode, speed_mult=1.0):
         evt = act["type"]
-        d = act["data"]
-        hwnd = self.recorded_target_hwnd
-        use_vc = self.use_virtual_cursor.get()
-        use_vk = self.use_isolated_vk.get()
+        data = act["data"]
+        backend = self.input_backend if IS_WINDOWS else None
 
-        try:
-            if evt == "MOUSE_MOVE":
-                tx, ty = d["x"], d["y"]
-                curve = d.get("curve", traj_mode)
-                pts = self._compute_curve_points(last_pos[0], last_pos[1], tx, ty, curve)
-                move_duration = max(0.0, float(d.get("duration", 0.0)) / max(speed_mult, 0.1))
-                step_delay = move_duration / max(len(pts) - 1, 1)
-                for px, py in pts[1:]:
-                    if self.stop_playback_event.is_set(): break
-                    self._move_virtual_or_real(px, py, state="HOVER")
-                    if step_delay > 0.001:
-                        time.sleep(step_delay)
-                return (tx, ty)
+        if IS_WINDOWS:
+            if backend is None or self.target_session is None:
+                raise TargetWindowError("Target input backend is not initialized.")
+            self.target_session.validate()
 
-            elif evt == "MOUSE_DRAG":
-                sx, sy = d.get("x", last_pos[0]), d.get("y", last_pos[1])
-                ex, ey = d.get("end_x", sx + 100), d.get("end_y", sy + 100)
-                btn_str = d.get("button", "left")
-                dur = max(0.05, d.get("duration", 0.5) / max(speed_mult, 0.1))
-                curve = d.get("curve", traj_mode)
+        def resolve_key(key_value):
+            raw = str(key_value).replace("Key.", "").strip()
+            vk, scan, clean = VirtualKeyboardEngine.resolve_vk_and_scan(key_value)
+            char = raw if len(raw) == 1 else None
+            system = clean == "alt" or "alt" in self._runtime_pressed_keys
+            extended = vk in (0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x2D, 0x2E)
+            return vk, scan, clean, char, system, extended
 
-                self._move_virtual_or_real(sx, sy, state="DOWN")
-                if use_vc and hwnd:
-                    IsolatedMouseDispatcher.button_down(hwnd, sx, sy, btn_str)
+        if evt == "MOUSE_MOVE":
+            tx, ty = data["x"], data["y"]
+            curve = data.get("curve", traj_mode)
+            points = self._compute_curve_points(last_pos[0], last_pos[1], tx, ty, curve)
+            move_duration = max(0.0, float(data.get("duration", 0.0)) / max(speed_mult, 0.1))
+            step_delay = move_duration / max(len(points) - 1, 1)
+            for px, py in points[1:]:
+                if self.stop_playback_event.is_set():
+                    break
+                self._move_virtual_or_real(px, py, state="HOVER")
+                if step_delay > 0.001:
+                    time.sleep(step_delay)
+            return (tx, ty)
+
+        if evt == "MOUSE_DRAG":
+            sx, sy = data.get("x", last_pos[0]), data.get("y", last_pos[1])
+            ex, ey = data.get("end_x", sx + 100), data.get("end_y", sy + 100)
+            button = data.get("button", "left")
+            duration = max(0.05, float(data.get("duration", 0.5)) / max(speed_mult, 0.1))
+            curve = data.get("curve", traj_mode)
+            self._move_virtual_or_real(sx, sy, state="DOWN")
+            if backend:
+                backend.button_down(sx, sy, button)
+            else:
+                btn = Button.left if button == "left" else (Button.right if button == "right" else Button.middle)
+                self.mouse_controller.press(btn)
+            try:
+                points = self._compute_curve_points(sx, sy, ex, ey, curve, steps=24)
+                step_delay = duration / max(len(points) - 1, 1)
+                for px, py in points[1:]:
+                    if self.stop_playback_event.is_set():
+                        break
+                    self._move_virtual_or_real(px, py, state="DRAG", btn_held=button)
+                    time.sleep(max(0.002, step_delay))
+            finally:
+                if backend:
+                    backend.button_up(ex, ey, button)
                 else:
-                    btn = Button.left if btn_str == "left" else (Button.right if btn_str == "right" else Button.middle)
-                    self.mouse_controller.press(btn)
-
-                pts = self._compute_curve_points(sx, sy, ex, ey, curve, steps=24)
-                step_dt = dur / max(len(pts) - 1, 1)
-                for px, py in pts[1:]:
-                    if self.stop_playback_event.is_set(): break
-                    self._move_virtual_or_real(px, py, state="DRAG", btn_held=btn_str)
-                    time.sleep(max(0.002, step_dt))
-
-                if use_vc and hwnd:
-                    IsolatedMouseDispatcher.button_up(hwnd, ex, ey, btn_str)
-                else:
-                    btn = Button.left if btn_str == "left" else (Button.right if btn_str == "right" else Button.middle)
+                    btn = Button.left if button == "left" else (Button.right if button == "right" else Button.middle)
                     self.mouse_controller.release(btn)
-                self._move_virtual_or_real(ex, ey, state="HOVER")
-                return (ex, ey)
+            self._move_virtual_or_real(ex, ey, state="HOVER")
+            return (ex, ey)
 
-            elif evt == "MOUSE_DOWN":
-                tx, ty = d.get("x", last_pos[0]), d.get("y", last_pos[1])
-                btn_str = d.get("button", "left")
-                tx, ty = self._move_virtual_or_real(tx, ty, state="DOWN")
-                if use_vc and hwnd:
-                    IsolatedMouseDispatcher.button_down(hwnd, tx, ty, btn_str)
-                else:
-                    btn = Button.left if btn_str == "left" else (Button.right if btn_str == "right" else Button.middle)
-                    self.mouse_controller.press(btn)
-                return (tx, ty)
+        if evt == "MOUSE_DOWN":
+            tx, ty = data.get("x", last_pos[0]), data.get("y", last_pos[1])
+            button = data.get("button", "left")
+            self._move_virtual_or_real(tx, ty, state="DOWN")
+            if backend:
+                backend.button_down(tx, ty, button)
+            else:
+                btn = Button.left if button == "left" else (Button.right if button == "right" else Button.middle)
+                self.mouse_controller.press(btn)
+            return (tx, ty)
 
-            elif evt == "MOUSE_UP":
-                tx, ty = d.get("x", last_pos[0]), d.get("y", last_pos[1])
-                btn_str = d.get("button", "left")
-                tx, ty = self._move_virtual_or_real(tx, ty, state="HOVER")
-                if use_vc and hwnd:
-                    IsolatedMouseDispatcher.button_up(hwnd, tx, ty, btn_str)
-                else:
-                    btn = Button.left if btn_str == "left" else (Button.right if btn_str == "right" else Button.middle)
-                    self.mouse_controller.release(btn)
-                return (tx, ty)
+        if evt == "MOUSE_UP":
+            tx, ty = data.get("x", last_pos[0]), data.get("y", last_pos[1])
+            button = data.get("button", "left")
+            self._move_virtual_or_real(tx, ty, state="HOVER")
+            if backend:
+                backend.button_up(tx, ty, button)
+            else:
+                btn = Button.left if button == "left" else (Button.right if button == "right" else Button.middle)
+                self.mouse_controller.release(btn)
+            return (tx, ty)
 
-            elif evt == "MOUSE_SCROLL":
-                tx, ty = d.get("x", last_pos[0]), d.get("y", last_pos[1])
-                tx, ty = self._move_virtual_or_real(tx, ty, state="SCROLL")
-                if use_vc:
-                    if hwnd:
-                        IsolatedMouseDispatcher.scroll(hwnd, tx, ty, d.get("dx", 0), d.get("dy", -2))
-                else:
-                    self.mouse_controller.scroll(d.get("dx", 0), d.get("dy", 0))
-                return (tx, ty)
+        if evt == "MOUSE_SCROLL":
+            tx, ty = data.get("x", last_pos[0]), data.get("y", last_pos[1])
+            self._move_virtual_or_real(tx, ty, state="SCROLL")
+            if backend:
+                backend.scroll(tx, ty, data.get("dx", 0), data.get("dy", -2))
+            else:
+                self.mouse_controller.scroll(data.get("dx", 0), data.get("dy", 0))
+            return (tx, ty)
 
-            elif evt == "KEY_HOLD":
-                k_str = d.get("key", "w")
-                dur = max(0.02, d.get("duration", 0.2) / max(speed_mult, 0.1))
-                mods = d.get("modifiers", [])
-                self.after(0, lambda k=k_str: self.virtual_cursor.set_state(self.virtual_cursor.state, key_badge=str(k).upper()))
-                if use_vk and hwnd:
-                    VirtualKeyboardEngine.send_key_hold(hwnd, k_str, duration_sec=dur, modifiers=mods, stop_event=self.stop_playback_event)
-                else:
-                    k_obj = self._deserialize_key(k_str)
-                    if k_obj:
-                        self.keyboard_controller.press(k_obj)
-                        time.sleep(dur)
-                        self.keyboard_controller.release(k_obj)
-                self.after(0, lambda: self.virtual_cursor.set_state(self.virtual_cursor.state, key_badge=""))
+        if evt == "KEY_HOLD":
+            key_value = data.get("key", "w")
+            duration = max(0.02, float(data.get("duration", 0.2)) / max(speed_mult, 0.1))
+            modifiers = data.get("modifiers", [])
+            self.after(0, lambda k=key_value: self.virtual_cursor.set_state(
+                self.virtual_cursor.state, key_badge=str(k).upper()
+            ))
+            if backend:
+                pressed_modifiers = []
+                try:
+                    for modifier in modifiers:
+                        mvk, mscan, mclean, _, _, mext = resolve_key(modifier)
+                        backend.key_down(mvk, mscan, system=(mclean == "alt"), extended=mext)
+                        pressed_modifiers.append((mvk, mscan, mclean, mext))
+                    vk, scan, clean, char, system, extended = resolve_key(key_value)
+                    system = system or any(mod[2] == "alt" for mod in pressed_modifiers)
+                    backend.key_hold(
+                        vk, scan, duration, self.stop_playback_event,
+                        system=system, extended=extended, char=char
+                    )
+                finally:
+                    for mvk, mscan, mclean, mext in reversed(pressed_modifiers):
+                        backend.key_up(mvk, mscan, system=(mclean == "alt"), extended=mext)
+            else:
+                key_obj = self._deserialize_key(key_value)
+                if key_obj:
+                    self.keyboard_controller.press(key_obj)
+                    time.sleep(duration)
+                    self.keyboard_controller.release(key_obj)
+            self.after(0, lambda: self.virtual_cursor.set_state(self.virtual_cursor.state, key_badge=""))
+            return last_pos
 
-            elif evt == "KEY_DOWN":
-                k_str = d["key"]
-                self.after(0, lambda k=k_str: self.virtual_cursor.set_state(self.virtual_cursor.state, key_badge=str(k).replace("Key.", "").upper()))
-                if use_vk and hwnd:
-                    VirtualKeyboardEngine.send_key_down(hwnd, k_str)
-                else:
-                    k = self._deserialize_key(k_str)
-                    if k: self.keyboard_controller.press(k)
+        if evt == "KEY_DOWN":
+            key_value = data["key"]
+            self.after(0, lambda k=key_value: self.virtual_cursor.set_state(
+                self.virtual_cursor.state, key_badge=str(k).replace("Key.", "").upper()
+            ))
+            if backend:
+                vk, scan, clean, char, system, extended = resolve_key(key_value)
+                backend.key_down(vk, scan, system=system, extended=extended, char=char)
+                self._runtime_pressed_keys.add(clean)
+            else:
+                key_obj = self._deserialize_key(key_value)
+                if key_obj:
+                    self.keyboard_controller.press(key_obj)
+            return last_pos
 
-            elif evt == "KEY_UP":
-                k_str = d["key"]
-                self.after(0, lambda: self.virtual_cursor.set_state(self.virtual_cursor.state, key_badge=""))
-                if use_vk and hwnd:
-                    VirtualKeyboardEngine.send_key_up(hwnd, k_str)
-                else:
-                    k = self._deserialize_key(k_str)
-                    if k: self.keyboard_controller.release(k)
+        if evt == "KEY_UP":
+            key_value = data["key"]
+            if backend:
+                vk, scan, clean, char, system, extended = resolve_key(key_value)
+                backend.key_up(vk, scan, system=system, extended=extended)
+                self._runtime_pressed_keys.discard(clean)
+            else:
+                key_obj = self._deserialize_key(key_value)
+                if key_obj:
+                    self.keyboard_controller.release(key_obj)
+            self.after(0, lambda: self.virtual_cursor.set_state(self.virtual_cursor.state, key_badge=""))
+            return last_pos
 
-            elif evt == "DELAY":
-                time.sleep(d.get("seconds", 0.1) / max(speed_mult, 0.1))
-        except Exception:
-            pass
+        if evt == "DELAY":
+            time.sleep(float(data.get("seconds", 0.1)) / max(speed_mult, 0.1))
         return last_pos
-
     def _compute_curve_points(self, x0, y0, x1, y1, curve_name, steps=18):
         if "Human" in curve_name or "Bézier" in curve_name:
             return TrajectoryEngine.human_bezier_curve(x0, y0, x1, y1, steps=steps)
@@ -5580,7 +5890,7 @@ if __name__ == "__main__":
         p = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON Macro", "*.json")])
         if p:
             with open(p, "w", encoding="utf-8") as f:
-                json.dump({"version": "10.5", "origin_pos": self.recorded_origin_pos, "target_app": self.recorded_target_title, "actions": self.actions}, f, indent=2)
+                json.dump({"version": MACRO_SCHEMA_VERSION, "origin_pos": self.recorded_origin_pos, "target_app": self.recorded_target_title, "actions": self.actions}, f, indent=2)
             messagebox.showinfo("Saved", "Macro saved successfully!")
 
     def load_macro_file(self):
@@ -5624,7 +5934,7 @@ if __name__ == "__main__":
 def main():
     if MISSING_DEPS:
         print("="*60)
-        print("⚡ APEX AUTO-CLICKER (v9.5)")
+        print(f"⚡ APEX AUTO-CLICKER (v{PRODUCT_VERSION})")
         print("="*60)
         print(f"Missing required library: {', '.join(MISSING_DEPS)}")
         print("\nPlease install the required libraries using:")

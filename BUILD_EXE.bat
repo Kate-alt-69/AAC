@@ -1,7 +1,9 @@
 @echo off
-title Apex Auto-Clicker v11.0 - Modular .EXE Builder
-color 0B
-python -m pip install --upgrade pip
-python -m pip install pynput pillow pyinstaller
-python build_exe.py
+setlocal
+cd /d "%~dp0"
+title Apex Auto-Clicker v1.1 - Build App and Installers
+py -3 build.py --target all %*
+set "RESULT=%ERRORLEVEL%"
+if not "%RESULT%"=="0" echo Build failed with exit code %RESULT%.
 pause
+exit /b %RESULT%
