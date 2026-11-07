@@ -4064,7 +4064,10 @@ class MacroStudioWindow(tk.Toplevel):
 
         # Target-app runtime and independent virtual cursor settings
         self.use_virtual_cursor = tk.BooleanVar(value=True)
-        self.use_isolated_vk = tk.BooleanVar(value=True)
+        # Shared by mouse and keyboard: prefer per-window messages, falling
+        # back only when the selected application requires foreground input.
+        self.prefer_target_window_input = tk.BooleanVar(value=True)
+        self.use_isolated_vk = self.prefer_target_window_input  # legacy settings alias
         self.clamp_to_target_bounds = tk.BooleanVar(value=True)
         self.virtual_cursor = VirtualCursorEntity(self)
         self.viewport_window = None
@@ -4251,8 +4254,8 @@ class MacroStudioWindow(tk.Toplevel):
 
         tk.Checkbutton(
             r1,
-            text="⌨️ Prefer target-window messages (AUTO)",
-            variable=self.use_isolated_vk,
+            text="🪟 Prefer target-window input (AUTO)",
+            variable=self.prefer_target_window_input,
             bg=THEME["bg_card"],
             fg=THEME["text_primary"],
             selectcolor=THEME["bg_input"],
@@ -4276,7 +4279,7 @@ class MacroStudioWindow(tk.Toplevel):
         help_row.pack(fill="x", pady=(1, 3))
         tk.Label(
             help_row,
-            text="Cursor is visual feedback. AUTO uses target-HWND messages where supported; Raw Input / game clients require foreground system input.",
+            text="The virtual cursor is visual feedback. AUTO routes mouse + keys to the locked window where supported; Raw Input / game clients require shared foreground input.",
             bg=THEME["bg_card"], fg=THEME["text_muted"], font=("Segoe UI", 8)
         ).pack(anchor="w")
         self.lbl_runtime_route = tk.Label(
@@ -4502,6 +4505,14 @@ class MacroStudioWindow(tk.Toplevel):
 
         AddBlockPopupDialog(self, _on_picked)
 
+    @staticmethod
+    def _format_target_route_status(route, detail):
+        if route == "WINDOW_MESSAGES":
+            return f"TARGET-WINDOW INPUT · queued/unverified · {detail}"
+        if route == "FOREGROUND_SENDINPUT":
+            return f"FOREGROUND / SHARED INPUT · physical mouse + keyboard · {detail}"
+        return f"{route} · {detail}"
+
     def _bind_target_window(self, hwnd, title="", class_name="", notify=True):
         """Capture one stable top-level HWND identity and select its input route."""
         if not IS_WINDOWS:
@@ -4522,7 +4533,7 @@ class MacroStudioWindow(tk.Toplevel):
             session.snapshot.class_name or class_name,
             (width, height),
             executable=session.snapshot.executable,
-            force_foreground=not self.use_isolated_vk.get(),
+            force_foreground=not self.prefer_target_window_input.get(),
         )
         self.input_backend = create_backend(self.input_route, session)
         details = self.input_profile.capabilities.get("input_verification", "route selected")
@@ -4532,7 +4543,7 @@ class MacroStudioWindow(tk.Toplevel):
             )
         if hasattr(self, "lbl_runtime_route"):
             self.lbl_runtime_route.config(
-                text=f"Input route: {self.input_route} · {details}"
+                text=self._format_target_route_status(self.input_route, details)
             )
         if notify:
             play_cue(high_pitch=True)
@@ -4570,7 +4581,7 @@ class MacroStudioWindow(tk.Toplevel):
             snapshot.class_name,
             (width, height),
             executable=snapshot.executable,
-            force_foreground=not self.use_isolated_vk.get(),
+            force_foreground=not self.prefer_target_window_input.get(),
         )
         if route == "FOREGROUND_SENDINPUT":
             consent = messagebox.askyesno(
@@ -4589,7 +4600,7 @@ class MacroStudioWindow(tk.Toplevel):
         self.input_backend = create_backend(route, self.target_session)
         if hasattr(self, "lbl_runtime_route"):
             detail = profile.capabilities.get("input_verification", "route selected")
-            self.lbl_runtime_route.config(text=f"Copy-Space route: {route} · {detail}")
+            self.lbl_runtime_route.config(text=self._format_target_route_status(route, detail))
         return self.input_backend
 
     def _release_target_input(self):
@@ -5469,7 +5480,7 @@ if __name__ == "__main__":
                     snapshot.class_name,
                     (width, height),
                     executable=snapshot.executable,
-                    force_foreground=not self.use_isolated_vk.get(),
+                    force_foreground=not self.prefer_target_window_input.get(),
                 )
                 self.input_backend = create_backend(self.input_route, self.target_session)
 
@@ -5491,7 +5502,7 @@ if __name__ == "__main__":
 
                 if hasattr(self, "lbl_runtime_route"):
                     detail = self.input_profile.capabilities.get("input_verification", "route selected")
-                    self.lbl_runtime_route.config(text=f"Playback route: {self.input_route} · {detail}")
+                    self.lbl_runtime_route.config(text=self._format_target_route_status(self.input_route, detail))
             except TargetWindowError as exc:
                 self.input_backend = None
                 messagebox.showerror("Target Session Invalid", str(exc))
@@ -5509,7 +5520,10 @@ if __name__ == "__main__":
         play_cue(high_pitch=True)
 
         self.btn_play_toggle.set_text_and_color("⏹  STOP PLAYBACK (F10)", THEME["accent_rose"], fg_color="#FFFFFF", hover_color="#FB7185")
-        self.lbl_record_status.config(text=f"[ PLAYING · {self.input_route or 'DESKTOP'} ]", fg=THEME["accent_emerald"])
+        route_label = "TARGET-WINDOW" if self.input_route == "WINDOW_MESSAGES" else (
+            "FOREGROUND / SHARED" if self.input_route == "FOREGROUND_SENDINPUT" else "DESKTOP"
+        )
+        self.lbl_record_status.config(text=f"[ PLAYING · {route_label} ]", fg=THEME["accent_emerald"])
 
         if self.auto_hide_play_var.get():
             self.withdraw()

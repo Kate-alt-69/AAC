@@ -197,6 +197,29 @@ class TargetWindowSession:
             raise TargetWindowError("The target window is minimized or has no usable client area.")
         return width, height
 
+    def validate_input_target(self, hwnd: int) -> int:
+        """Ensure a message recipient is the locked top-level HWND or its child."""
+        self.validate()
+        target = int(hwnd or 0)
+        user32 = ctypes.windll.user32
+        if not target or not user32.IsWindow(target):
+            raise TargetWindowError("The selected target control no longer exists.")
+        root = int(user32.GetAncestor(target, self.GA_ROOT) or target)
+        if root != self.hwnd:
+            raise TargetWindowError(
+                "Refusing input because the recipient is outside the locked target window."
+            )
+        return target
+
+    def point_for_target(self, hwnd: int, client_x: int, client_y: int) -> tuple[int, int]:
+        """Map a point in the root client area into a pinned child HWND's coordinates."""
+        target = self.validate_input_target(hwnd)
+        cx, cy = self.clamp_point(client_x, client_y)
+        if target == self.hwnd:
+            return cx, cy
+        sx, sy = self.client_to_screen(cx, cy)
+        return self.screen_to_client(target, sx, sy)
+
     def get_client_size(self) -> tuple[int, int]:
         return self.validate()
 

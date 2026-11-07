@@ -57,16 +57,47 @@ class WindowMessageInputBackend:
     def __init__(self, session: TargetWindowSession):
         self.session = session
         self.pressed_buttons: set[str] = set()
-        self.pressed_keys: dict[int, tuple[int, int]] = {}
+        # A drag keeps its original child HWND even when the pointer crosses controls.
+        self.mouse_capture_targets: dict[str, int] = {}
+        # Each key-up must be delivered to the same child HWND as its key-down.
+        self.pressed_keys: dict[int, tuple[int, int, int]] = {}
         self.last_client_point = (0, 0)
+
+    def _validate_target(self, hwnd: int) -> int:
+        if hasattr(self.session, "validate_input_target"):
+            return int(self.session.validate_input_target(int(hwnd)))
+        self.session.validate()
+        return int(hwnd)
+
+    def _point_for_target(self, hwnd: int, x: int, y: int) -> tuple[int, int]:
+        hwnd = self._validate_target(hwnd)
+        if hasattr(self.session, "point_for_target"):
+            tx, ty = self.session.point_for_target(hwnd, int(x), int(y))
+            return int(tx), int(ty)
+        sx, sy = self.session.client_to_screen(int(x), int(y))
+        tx, ty = self.session.screen_to_client(hwnd, sx, sy)
+        return int(tx), int(ty)
+
+    def _resolve_mouse_target(self, x: int, y: int, button: Optional[str] = None):
+        captured = self.mouse_capture_targets.get(button) if button else None
+        if captured is None and self.mouse_capture_targets:
+            # Also covers a timeline with separate DOWN -> MOVE -> UP actions.
+            captured = next(reversed(self.mouse_capture_targets.values()))
+        if captured is not None:
+            target = self._validate_target(captured)
+            tx, ty = self._point_for_target(target, x, y)
+            return target, tx, ty
+        target, tx, ty = self.session.child_at_client_point(int(x), int(y))
+        return self._validate_target(target), int(tx), int(ty)
 
     def _post(self, hwnd: int, msg: int, wparam: int, lparam: int) -> InputDispatchReceipt:
         if not IS_WINDOWS:
             raise TargetWindowError("Win32 window-message input is only available on Windows.")
-        self.session.validate()
+        # A message may never escape the process/window identity captured at lock time.
+        target_hwnd = self._validate_target(int(hwnd))
         ctypes.set_last_error(0)
         ok = ctypes.windll.user32.PostMessageW(
-            int(hwnd), int(msg), int(wparam), int(lparam)
+            target_hwnd, int(msg), int(wparam), int(lparam)
         )
         if not ok:
             error = int(ctypes.windll.kernel32.GetLastError())
@@ -82,17 +113,27 @@ class WindowMessageInputBackend:
         )
 
     def mouse_move(self, x: int, y: int, button_held: Optional[str] = None) -> InputDispatchReceipt:
-        target, tx, ty = self.session.child_at_client_point(x, y)
+        target, tx, ty = self._resolve_mouse_target(x, y, button_held)
         self.last_client_point = self.session.clamp_point(x, y)
-        key_state = self.MK_LBUTTON if button_held == "left" else (
-            self.MK_RBUTTON if button_held == "right" else (
-                self.MK_MBUTTON if button_held == "middle" else 0
-            )
-        )
+        key_state = 0
+        held_buttons = set(self.pressed_buttons)
+        if button_held:
+            held_buttons.add(button_held)
+        for held in held_buttons:
+            key_state |= {
+                "left": self.MK_LBUTTON,
+                "right": self.MK_RBUTTON,
+                "middle": self.MK_MBUTTON,
+            }.get(held, 0)
         return self._post(target, self.WM_MOUSEMOVE, key_state, self.session.pack_client_lparam(tx, ty))
 
     def button_down(self, x: int, y: int, button: str = "left") -> InputDispatchReceipt:
-        target, tx, ty = self.session.child_at_client_point(x, y)
+        captured = self.mouse_capture_targets.get(button)
+        if captured is not None:
+            target = self._validate_target(captured)
+            tx, ty = self._point_for_target(target, x, y)
+        else:
+            target, tx, ty = self._resolve_mouse_target(x, y)
         messages = {
             "left": (self.WM_LBUTTONDOWN, self.MK_LBUTTON),
             "right": (self.WM_RBUTTONDOWN, self.MK_RBUTTON),
@@ -101,11 +142,17 @@ class WindowMessageInputBackend:
         msg, state = messages.get(button, messages["left"])
         receipt = self._post(target, msg, state, self.session.pack_client_lparam(tx, ty))
         self.pressed_buttons.add(button)
+        self.mouse_capture_targets[button] = target
         self.last_client_point = self.session.clamp_point(x, y)
         return receipt
 
     def button_up(self, x: int, y: int, button: str = "left") -> InputDispatchReceipt:
-        target, tx, ty = self.session.child_at_client_point(x, y)
+        captured = self.mouse_capture_targets.get(button)
+        if captured is not None:
+            target = self._validate_target(captured)
+            tx, ty = self._point_for_target(target, x, y)
+        else:
+            target, tx, ty = self._resolve_mouse_target(x, y)
         messages = {
             "left": (self.WM_LBUTTONUP, 0),
             "right": (self.WM_RBUTTONUP, 0),
@@ -114,12 +161,14 @@ class WindowMessageInputBackend:
         msg, state = messages.get(button, messages["left"])
         receipt = self._post(target, msg, state, self.session.pack_client_lparam(tx, ty))
         self.pressed_buttons.discard(button)
+        self.mouse_capture_targets.pop(button, None)
         self.last_client_point = self.session.clamp_point(x, y)
         return receipt
 
     def scroll(self, x: int, y: int, dx: int = 0, dy: int = 0) -> list[InputDispatchReceipt]:
         sx, sy = self.session.client_to_screen(x, y)
-        target = self.session.focused_control()
+        target, _, _ = self.session.child_at_client_point(x, y)
+        target = self._validate_target(target)
         receipts = []
         if dy:
             delta = int(round(float(dy) * 120))
@@ -133,7 +182,10 @@ class WindowMessageInputBackend:
 
     def key_down(self, vk: int, scan: int = 0, *, system: bool = False, extended: bool = False,
                  char: Optional[str] = None) -> InputDispatchReceipt:
-        target = self.session.focused_control()
+        existing = self.pressed_keys.get(int(vk))
+        target = self._validate_target(existing[2]) if existing else self._validate_target(
+            self.session.focused_control()
+        )
         lparam = 1 | ((int(scan) & 0xFF) << 16)
         if extended:
             lparam |= 1 << 24
@@ -154,11 +206,14 @@ class WindowMessageInputBackend:
             shift_scan = int(ctypes.windll.user32.MapVirtualKeyW(0x10, 0))
             shift_up = 1 | ((shift_scan & 0xFF) << 16) | (1 << 30) | (1 << 31)
             self._post(target, self.WM_KEYUP, 0x10, shift_up)
-        self.pressed_keys[int(vk)] = (int(scan), 1 if extended else 0)
+        self.pressed_keys[int(vk)] = (int(scan), 1 if extended else 0, target)
         return receipt
 
     def key_up(self, vk: int, scan: int = 0, *, system: bool = False, extended: bool = False) -> InputDispatchReceipt:
-        target = self.session.focused_control()
+        pressed = self.pressed_keys.get(int(vk))
+        target = self._validate_target(pressed[2]) if pressed else self._validate_target(
+            self.session.focused_control()
+        )
         lparam = 1 | ((int(scan) & 0xFF) << 16) | (1 << 30) | (1 << 31)
         if extended:
             lparam |= 1 << 24
@@ -193,7 +248,7 @@ class WindowMessageInputBackend:
                     self.button_up(x, y, button)
                 except Exception:
                     self.pressed_buttons.discard(button)
-            for vk, (scan, extended) in tuple(self.pressed_keys.items()):
+            for vk, (scan, extended, _target) in tuple(self.pressed_keys.items()):
                 try:
                     self.key_up(vk, scan, extended=bool(extended))
                 except Exception:
