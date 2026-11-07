@@ -119,7 +119,7 @@ class TargetWindowSession:
         return ((int(delta) & 0xFFFF) << 16) | (int(key_state) & 0xFFFF)
 
     @classmethod
-    def capture(cls, hwnd: int) -> "TargetWindowSession":
+    def capture(cls, hwnd: int) -> TargetWindowSession:
         if not IS_WINDOWS:
             raise TargetWindowError("Target-window Win32 input is only available on Windows.")
         if not hwnd:

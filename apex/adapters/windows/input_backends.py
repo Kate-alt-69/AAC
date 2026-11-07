@@ -8,10 +8,8 @@ It enters the shared desktop input stream and is not background isolation.
 from __future__ import annotations
 
 import ctypes
-import sys
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 from apex.adapters.windows.target_session import (
     IS_WINDOWS,
@@ -78,7 +76,7 @@ class WindowMessageInputBackend:
         tx, ty = self.session.screen_to_client(hwnd, sx, sy)
         return int(tx), int(ty)
 
-    def _resolve_mouse_target(self, x: int, y: int, button: Optional[str] = None):
+    def _resolve_mouse_target(self, x: int, y: int, button: str | None = None):
         captured = self.mouse_capture_targets.get(button) if button else None
         if captured is None and self.mouse_capture_targets:
             # Also covers a timeline with separate DOWN -> MOVE -> UP actions.
@@ -112,7 +110,7 @@ class WindowMessageInputBackend:
             message=f"WM 0x{msg:04X} queued; target application processing is not acknowledged.",
         )
 
-    def mouse_move(self, x: int, y: int, button_held: Optional[str] = None) -> InputDispatchReceipt:
+    def mouse_move(self, x: int, y: int, button_held: str | None = None) -> InputDispatchReceipt:
         target, tx, ty = self._resolve_mouse_target(x, y, button_held)
         self.last_client_point = self.session.clamp_point(x, y)
         key_state = 0
@@ -171,17 +169,17 @@ class WindowMessageInputBackend:
         target = self._validate_target(target)
         receipts = []
         if dy:
-            delta = int(round(float(dy) * 120))
+            delta = round(float(dy) * 120)
             wparam = self.session.pack_wheel_wparam(delta)
             receipts.append(self._post(target, self.WM_MOUSEWHEEL, wparam, self.session.pack_screen_lparam(sx, sy)))
         if dx:
-            delta = int(round(float(dx) * 120))
+            delta = round(float(dx) * 120)
             wparam = self.session.pack_wheel_wparam(delta)
             receipts.append(self._post(target, self.WM_MOUSEHWHEEL, wparam, self.session.pack_screen_lparam(sx, sy)))
         return receipts
 
     def key_down(self, vk: int, scan: int = 0, *, system: bool = False, extended: bool = False,
-                 char: Optional[str] = None) -> InputDispatchReceipt:
+                 char: str | None = None) -> InputDispatchReceipt:
         existing = self.pressed_keys.get(int(vk))
         target = self._validate_target(existing[2]) if existing else self._validate_target(
             self.session.focused_control()
@@ -228,7 +226,7 @@ class WindowMessageInputBackend:
         return receipt
 
     def key_hold(self, vk: int, scan: int = 0, duration: float = 0.1, stop_event=None,
-                 *, system: bool = False, extended: bool = False, char: Optional[str] = None) -> None:
+                 *, system: bool = False, extended: bool = False, char: str | None = None) -> None:
         self.key_down(vk, scan, system=system, extended=extended, char=char)
         deadline = time.perf_counter() + max(0.01, float(duration))
         try:
@@ -251,14 +249,15 @@ class WindowMessageInputBackend:
             for button in tuple(self.pressed_buttons):
                 try:
                     self.button_up(x, y, button)
-                except Exception:
+                except (TargetWindowError, OSError, ctypes.ArgumentError):
                     self.pressed_buttons.discard(button)
+                    self.mouse_capture_targets.pop(button, None)
             for vk, (scan, extended, _target) in tuple(self.pressed_keys.items()):
                 try:
                     self.key_up(vk, scan, extended=bool(extended))
-                except Exception:
+                except (TargetWindowError, OSError, ctypes.ArgumentError):
                     self.pressed_keys.pop(vk, None)
-        except Exception:
+        except (TargetWindowError, OSError, ctypes.ArgumentError):
             self.pressed_buttons.clear()
             self.mouse_capture_targets.clear()
             self.pressed_keys.clear()
@@ -359,7 +358,7 @@ class ForegroundSendInputBackend:
         item.ki = _KEYBDINPUT(int(vk), int(scan), int(flags), 0, 0)
         return item
 
-    def mouse_move(self, x: int, y: int, button_held: Optional[str] = None) -> InputDispatchReceipt:
+    def mouse_move(self, x: int, y: int, button_held: str | None = None) -> InputDispatchReceipt:
         self.session.require_foreground()
         sx, sy = self.session.client_to_screen(x, y)
         user32 = ctypes.windll.user32
@@ -401,7 +400,7 @@ class ForegroundSendInputBackend:
         return receipts
 
     def key_down(self, vk: int, scan: int = 0, *, system: bool = False, extended: bool = False,
-                 char: Optional[str] = None) -> InputDispatchReceipt:
+                 char: str | None = None) -> InputDispatchReceipt:
         flags = self.KEYEVENTF_EXTENDEDKEY if extended else 0
         inputs = []
         shift_state = (
@@ -429,7 +428,7 @@ class ForegroundSendInputBackend:
         return receipt
 
     def key_hold(self, vk: int, scan: int = 0, duration: float = 0.1, stop_event=None,
-                 *, system: bool = False, extended: bool = False, char: Optional[str] = None) -> None:
+                 *, system: bool = False, extended: bool = False, char: str | None = None) -> None:
         self.key_down(vk, scan, system=system, extended=extended, char=char)
         deadline = time.perf_counter() + max(0.01, float(duration))
         try:

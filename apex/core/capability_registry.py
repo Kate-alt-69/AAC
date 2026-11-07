@@ -31,7 +31,7 @@ class CapabilityRegistry:
         t_low = (title or "").lower()
         c_low = (class_name or "").lower()
         e_low = os.path.basename(executable or "").lower()
-        identity = " ".join((t_low, c_low, e_low))
+        identity = f"{t_low} {c_low} {e_low}"
 
         if any(marker in identity for marker in cls.GAME_MARKERS):
             is_roblox = "roblox" in identity or "windowsclient" in identity

@@ -34,9 +34,12 @@ class InputRouter:
         )
         caps = profile.capabilities
 
-        if self.mode == self.MODE_DESKTOP or force_foreground:
-            route = self.ROUTE_FOREGROUND_SENDINPUT
-        elif caps.get("requires_foreground") or not caps.get("window_message_input"):
+        if (
+            self.mode == self.MODE_DESKTOP
+            or force_foreground
+            or caps.get("requires_foreground")
+            or not caps.get("window_message_input")
+        ):
             route = self.ROUTE_FOREGROUND_SENDINPUT
         else:
             route = self.ROUTE_WINDOW_MESSAGES
