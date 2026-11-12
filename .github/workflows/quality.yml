@@ -107,7 +107,7 @@ jobs:
         run: python build.py --target all --installer-format all --skip-tests
 
       - name: Upload Windows release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: apex-v1.0.0-windows-x64
           if-no-files-found: error
