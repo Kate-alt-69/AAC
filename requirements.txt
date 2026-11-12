@@ -1,5 +1,5 @@
 pynput>=1.7.6
 pillow>=13.0.0
 opencv-python>=4.8.0
-numpy>=1.24.0
+numpy>=2.5.4
 pyinstaller>=6.0.0
